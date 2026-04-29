@@ -2,15 +2,26 @@ import React, { useEffect, useRef, useState } from 'react';
 
 const COLORS = [
   '#3b82f6', '#22c55e', '#f59e0b', '#a855f7',
-  '#ec4899', '#14b8a6', '#f97316', '#06b6d4'
+  '#ec4899', '#14b8a6', '#f97316', '#06b6d4',
+  '#eab308', '#ef4444', '#8b5cf6', '#10b981'
 ];
 
 function ReviewPage({ data }) {
   const canvasRef = useRef(null);
+  const pdfContainerRef = useRef(null);
   const [pdfDoc, setPdfDoc] = useState(null);
   const [currentPage, setCurrentPage] = useState(0);
   const [editedValues, setEditedValues] = useState({});
   const [confirmed, setConfirmed] = useState(false);
+  const [highlightedKey, setHighlightedKey] = useState(null);
+
+  // Pripravi mapping: ključ polja → barva (globalno, ne glede na stran)
+  const fieldColorMap = {};
+  if (data?.results) {
+    Object.keys(data.results).forEach((key, i) => {
+      fieldColorMap[key] = COLORS[i % COLORS.length];
+    });
+  }
 
   useEffect(() => {
     if (!data) return;
@@ -38,13 +49,17 @@ function ReviewPage({ data }) {
   useEffect(() => {
     if (!pdfDoc) return;
     renderPage(currentPage);
-  }, [pdfDoc, currentPage]);
+  }, [pdfDoc, currentPage, highlightedKey]);
 
   function getPageHighlights(pageNum) {
     if (!data?.results) return [];
     return Object.entries(data.results)
-      .filter(([_, val]) => val.page === pageNum && val.coordinates)
-      .map(([key, val], i) => ({ key, ...val, color: COLORS[i % COLORS.length] }));
+      .filter(([_, val]) => val.page === pageNum && val.rectangles && val.rectangles.length > 0)
+      .map(([key, val]) => ({
+        key,
+        ...val,
+        color: fieldColorMap[key]
+      }));
   }
 
   async function renderPage(pageNum) {
@@ -58,21 +73,32 @@ function ReviewPage({ data }) {
 
     await page.render({ canvasContext: ctx, viewport }).promise;
 
-    // Nariši highlight pravokotnik za vsako polje
     const highlights = getPageHighlights(pageNum);
     const scale = 1.4;
+
     highlights.forEach(h => {
-    const { x, y, width, height, color } = h.coordinates;
-    ctx.save();
-    ctx.globalAlpha = 0.25;
-    ctx.fillStyle = color;
-    ctx.fillRect(x * scale, y * scale, width * scale, height * scale);
-    ctx.globalAlpha = 1.0;
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 2;
-    ctx.strokeRect(x * scale, y * scale, width * scale, height * scale);
-    ctx.restore();
-});
+      const color = h.color;
+      const isFocused = highlightedKey === h.key;
+
+      h.rectangles.forEach(rect => {
+        const { x, y, width, height } = rect;
+        ctx.save();
+        ctx.globalCompositeOperation = 'multiply';
+        ctx.fillStyle = color;
+        ctx.fillRect(x * scale, y * scale, width * scale, height * scale);
+        ctx.restore();
+
+        ctx.save();
+        ctx.strokeStyle = color;
+        ctx.lineWidth = isFocused ? 4 : 2;
+        if (isFocused) {
+          ctx.shadowColor = color;
+          ctx.shadowBlur = 12;
+        }
+        ctx.strokeRect(x * scale, y * scale, width * scale, height * scale);
+        ctx.restore();
+      });
+    });
   }
 
   function getConfidenceColor(conf) {
@@ -91,6 +117,40 @@ function ReviewPage({ data }) {
     console.log('Potrjeni podatki:', editedValues);
     setConfirmed(true);
   }
+
+  function jumpToField(key) {
+    const field = data.results[key];
+    if (!field || field.page === null || !field.rectangles?.length) return;
+
+    setHighlightedKey(key);
+
+    if (field.page !== currentPage) {
+      setCurrentPage(field.page);
+    } else {
+      // Ista stran — scroll znotraj container-ja do pravokotnika
+      const rect = field.rectangles[0];
+      const scale = 1.4;
+      const targetY = rect.y * scale - 80;
+      pdfContainerRef.current?.scrollTo({ top: targetY, behavior: 'smooth' });
+    }
+
+    // Po 2 sekundah odstrani highlight
+    setTimeout(() => setHighlightedKey(null), 2500);
+  }
+
+  // Ko se zamenja stran zaradi jumpToField, scrollaj do pravokotnika
+  useEffect(() => {
+    if (!highlightedKey || !pdfContainerRef.current) return;
+    const field = data?.results?.[highlightedKey];
+    if (!field || field.page !== currentPage) return;
+    const rect = field.rectangles?.[0];
+    if (!rect) return;
+    const scale = 1.4;
+    const targetY = rect.y * scale - 80;
+    setTimeout(() => {
+      pdfContainerRef.current?.scrollTo({ top: targetY, behavior: 'smooth' });
+    }, 100);
+  }, [currentPage, highlightedKey, data]);
 
   if (!data) {
     return (
@@ -130,23 +190,30 @@ function ReviewPage({ data }) {
 
       <div className="review-layout">
 
-        {/* LEVA STRAN — polja */}
         <div className="review-left">
           <div className="section-title" style={{ marginBottom: '12px' }}>
             Ekstrahirani podatki
           </div>
 
           <div className="fields-result-list">
-            {fieldKeys.map((key, i) => {
+            {fieldKeys.map((key) => {
               const field = results[key];
               const conf = field.confidence;
               const color = getConfidenceColor(conf);
+              const fieldColor = fieldColorMap[key];
+              const canJump = field.page !== null && field.rectangles?.length > 0;
+              const isActive = highlightedKey === key;
+
               return (
-                <div key={key} className="result-field-card">
+                <div
+                  key={key}
+                  className={`result-field-card ${canJump ? 'clickable' : ''} ${isActive ? 'active' : ''}`}
+                  onClick={() => canJump && jumpToField(key)}
+                >
                   <div className="result-field-header">
                     <span
                       className="result-field-dot"
-                      style={{ background: COLORS[i % COLORS.length] }}
+                      style={{ background: fieldColor }}
                     />
                     <span className="result-field-key">{key}</span>
                     <span className="result-conf-badge" style={{ color, borderColor: color }}>
@@ -157,6 +224,7 @@ function ReviewPage({ data }) {
                     className="result-field-input"
                     style={{ borderColor: conf < 0.75 ? '#f59e0b' : '#2a2f3a' }}
                     value={editedValues[key] ?? ''}
+                    onClick={(e) => e.stopPropagation()}
                     onChange={(e) => setEditedValues({
                       ...editedValues,
                       [key]: e.target.value
@@ -190,12 +258,11 @@ function ReviewPage({ data }) {
           </div>
         </div>
 
-        {/* DESNA STRAN — PDF */}
         <div className="review-right">
           <div className="section-title" style={{ marginBottom: '12px' }}>
             Originalni dokument
           </div>
-          <div className="pdf-container">
+          <div className="pdf-container" ref={pdfContainerRef}>
             <canvas ref={canvasRef} className="pdf-canvas" />
           </div>
           {totalPages > 1 && (

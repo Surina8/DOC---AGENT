@@ -442,3 +442,19 @@
   border-radius: 10px;
   font-weight: 600;
 }
+
+.result-field-card.clickable {
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.result-field-card.clickable:hover {
+  border-color: #3b82f6;
+  background: #1a1e25;
+}
+
+.result-field-card.active {
+  border-color: #3b82f6;
+  background: #1e2d4a;
+  box-shadow: 0 0 0 2px #3b82f640;
+}

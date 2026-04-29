@@ -1,5 +1,28 @@
 import fitz
 
+def calculate_confidence(value, source_text, num_instances_found):
+    if not source_text or value is None:
+        return 0.0
+
+    if num_instances_found == 0:
+        return 0.0
+
+    if num_instances_found == 1:
+        base = 0.95
+    elif num_instances_found == 2:
+        base = 0.85
+    else:
+        base = 0.70
+
+    value_str = str(value).strip().lower()
+    source_lower = source_text.lower()
+
+    if value_str in source_lower:
+        return base
+    else:
+        return base - 0.15
+
+
 def find_coordinates_and_confidence(pdf_path, extraction_result):
     doc = fitz.open(pdf_path)
     results = {}
@@ -16,7 +39,7 @@ def find_coordinates_and_confidence(pdf_path, extraction_result):
                 "value": value,
                 "source_text": source_text,
                 "confidence": 0.0,
-                "coordinates": None,
+                "rectangles": [],
                 "page": None
             }
             continue
@@ -25,37 +48,32 @@ def find_coordinates_and_confidence(pdf_path, extraction_result):
         for page_num, page in enumerate(doc):
             instances = page.search_for(source_text)
             if instances:
-                rect = instances[0]
+                rectangles = [
+                    {"x": r.x0, "y": r.y0, "width": r.width, "height": r.height}
+                    for r in instances
+                ]
                 results[key] = {
                     "value": value,
                     "source_text": source_text,
-                    "confidence": round(0.95 - (len(instances) - 1) * 0.1, 2),
-                    "coordinates": {
-                        "x": rect.x0,
-                        "y": rect.y0,
-                        "width": rect.width,
-                        "height": rect.height
-                    },
+                    "confidence": round(calculate_confidence(value, source_text, len(instances)), 2),
+                    "rectangles": rectangles,
                     "page": page_num
                 }
                 found = True
                 break
 
-            # Poskusi z vrednostjo če source_text ni najden
             if not found and value:
                 instances2 = page.search_for(str(value))
                 if instances2:
-                    rect = instances2[0]
+                    rectangles = [
+                        {"x": r.x0, "y": r.y0, "width": r.width, "height": r.height}
+                        for r in instances2
+                    ]
                     results[key] = {
                         "value": value,
                         "source_text": source_text,
-                        "confidence": 0.65,
-                        "coordinates": {
-                            "x": rect.x0,
-                            "y": rect.y0,
-                            "width": rect.width,
-                            "height": rect.height
-                        },
+                        "confidence": 0.55,
+                        "rectangles": rectangles,
                         "page": page_num
                     }
                     found = True
@@ -66,7 +84,7 @@ def find_coordinates_and_confidence(pdf_path, extraction_result):
                 "value": value,
                 "source_text": source_text,
                 "confidence": 0.0,
-                "coordinates": None,
+                "rectangles": [],
                 "page": None
             }
 
