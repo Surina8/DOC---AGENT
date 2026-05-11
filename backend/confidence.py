@@ -1,4 +1,4 @@
-import fitz
+import fitz # PyMuPDF
 
 def calculate_confidence(value, source_text, num_instances_found):
     if not source_text or value is None:
@@ -28,7 +28,10 @@ def find_coordinates_and_confidence(pdf_path, extraction_result):
     results = {}
 
     for key, data in extraction_result.items():
-        if not isinstance(data, dict):
+        # Če LLM vrne direkten string namesto {value, source_text}
+        if isinstance(data, str):
+            data = {"value": data, "source_text": data}
+        elif not isinstance(data, dict):
             continue
 
         value = data.get("value")

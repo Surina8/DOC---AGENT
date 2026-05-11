@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
@@ -39,14 +39,14 @@ async def suggest_fields(file: UploadFile = File(...)):
         text = extract_text(tmp_path)
         prompt = build_suggest_prompt(text)
         raw = call_llm(prompt)
+
         result = json.loads(raw)
         return result
     finally:
         os.remove(tmp_path)
 
 @app.post("/api/extract")
-async def extract(file: UploadFile = File(...), fields: str = "[]"):
-    # Shrani PDF trajno za prikaz v review
+async def extract(file: UploadFile = File(...), fields: str = Form("[]")):
     pdf_filename = f"{file.filename}"
     pdf_path = os.path.join(PDF_DIR, pdf_filename)
 
@@ -57,11 +57,27 @@ async def extract(file: UploadFile = File(...), fields: str = "[]"):
     try:
         text = extract_text(pdf_path)
         fields_list = json.loads(fields)
+        print("FIELDS PREJETE:", fields_list)
+        print("ŠT. POLJ:", len(fields_list))
         prompt = build_extract_prompt(fields_list, text)
         raw = call_llm(prompt)
+
+        print("==== RAW LLM ODGOVOR ====")
+        print(raw)
+        print("=========================")
+
         extraction = json.loads(raw)
 
-        # Poišči koordinate in izračunaj confidence
+        # Če je LLM zavil odgovor v zunanji ključ, ga odkrijemo
+        if len(extraction) == 1:
+            only_key = list(extraction.keys())[0]
+            inner = extraction[only_key]
+            if isinstance(inner, dict):
+                field_keys = {f["key"] for f in fields_list}
+                if not (field_keys & set(extraction.keys())):
+                    print(f"Odgovor je zavit v ključ '{only_key}', odvijem...")
+                    extraction = inner
+
         results = find_coordinates_and_confidence(pdf_path, extraction)
 
         return {
@@ -69,4 +85,7 @@ async def extract(file: UploadFile = File(...), fields: str = "[]"):
             "results": results
         }
     except Exception as e:
+        print(f"NAPAKA v extract: {e}")
+        import traceback
+        traceback.print_exc()
         return {"error": str(e)}

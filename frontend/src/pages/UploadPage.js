@@ -20,6 +20,7 @@ function UploadPage({ onComplete }) {
     }
   }
 
+  
   function handleFileSelect(e) {
     const selected = e.target.files[0];
     if (selected) {

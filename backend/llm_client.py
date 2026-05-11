@@ -12,6 +12,8 @@ client = OpenAI(
 def call_llm(prompt, model="openai/gpt-4o-mini"):
     response = client.chat.completions.create(
         model=model,
+        temperature=0,
+        seed=42,
         response_format={"type": "json_object"},
         messages=[
             {"role": "system", "content": prompt}
