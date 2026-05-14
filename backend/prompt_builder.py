@@ -22,7 +22,7 @@ PRAVILA:
 - Za račune predlagaj: izdajatelja, prejemnika, postavke, zneske, datume.
 
 Dokument:
-{document_text[:4000]}
+{document_text[:15000]}
 """
 
 def build_extract_prompt(fields, document_text):
@@ -67,5 +67,5 @@ PRIČAKOVAN FORMAT:
 {example_str}
 
 DOKUMENT:
-{document_text[:4000]}
+{document_text[:15000]}
 """
