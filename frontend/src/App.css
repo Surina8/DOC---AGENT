@@ -458,3 +458,75 @@
   background: #1e2d4a;
   box-shadow: 0 0 0 2px #3b82f640;
 }
+
+
+
+.history-page {
+  max-width: 1400px;
+}
+
+.history-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: #13161b;
+  border: 1px solid #2a2f3a;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.history-table thead {
+  background: #1a1e25;
+}
+
+.history-table th {
+  text-align: left;
+  padding: 14px 16px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #9aa0b0;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid #2a2f3a;
+}
+
+.history-table td {
+  padding: 14px 16px;
+  font-size: 13px;
+  color: #e8eaf0;
+  border-bottom: 1px solid #1e2228;
+}
+
+.history-row {
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.history-row:hover {
+  background: #1a1e25;
+}
+
+.history-row:last-child td {
+  border-bottom: none;
+}
+
+.history-filename {
+  font-family: 'JetBrains Mono', 'Courier New', monospace;
+  color: #3b82f6;
+  font-weight: 500;
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.btn-sm {
+  padding: 6px 12px;
+  font-size: 12px;
+}

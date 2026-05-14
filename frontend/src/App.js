@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import './App.css';
 import UploadPage from './pages/UploadPage';
 import ReviewPage from './pages/ReviewPage';
+import HistoryPage from './pages/HistoryPage';
 
 function App() {
   const [activePage, setActivePage] = useState('upload');
@@ -9,6 +10,11 @@ function App() {
 
   function goToReview(result) {
     setExtractionResult(result);
+    setActivePage('review');
+  }
+
+  function openHistoricalDocument(documentData) {
+    setExtractionResult(documentData);
     setActivePage('review');
   }
 
@@ -36,16 +42,16 @@ function App() {
             )}
           </div>
           <div
+            className={`nav-item ${activePage === 'history' ? 'active' : ''}`}
+            onClick={() => setActivePage('history')}
+          >
+            Zgodovina
+          </div>
+          <div
             className={`nav-item ${activePage === 'dashboard' ? 'active' : ''}`}
             onClick={() => setActivePage('dashboard')}
           >
             Dashboard
-          </div>
-          <div
-            className={`nav-item ${activePage === 'eval' ? 'active' : ''}`}
-            onClick={() => setActivePage('eval')}
-          >
-            Evalvacija
           </div>
         </nav>
       </div>
@@ -55,8 +61,8 @@ function App() {
           <div className="page-title">
             {activePage === 'upload' && 'Nov dokument'}
             {activePage === 'review' && 'Human Review'}
+            {activePage === 'history' && 'Zgodovina dokumentov'}
             {activePage === 'dashboard' && 'Dashboard'}
-            {activePage === 'eval' && 'Evalvacija modelov'}
           </div>
         </div>
         <div className="content">
@@ -66,8 +72,10 @@ function App() {
           {activePage === 'review' && (
             <ReviewPage data={extractionResult} />
           )}
+          {activePage === 'history' && (
+            <HistoryPage onOpenDocument={openHistoricalDocument} />
+          )}
           {activePage === 'dashboard' && <p>Dashboard — kmalu</p>}
-          {activePage === 'eval' && <p>Evalvacija — kmalu</p>}
         </div>
       </div>
     </div>
