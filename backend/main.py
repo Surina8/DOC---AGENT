@@ -16,6 +16,8 @@ from pydantic import BaseModel
 from typing import List, Optional
 from models import FieldTemplate, TemplateField
 
+from embeddings import generate_embedding
+
 load_dotenv()
 
 app = FastAPI()
@@ -56,6 +58,7 @@ async def suggest_fields(file: UploadFile = File(...)):
 async def extract(
     file: UploadFile = File(...),
     fields: str = Form("[]"),
+    template_id: str = Form(""),
     db: Session = Depends(get_db)
 ):
     pdf_filename = f"{file.filename}"
@@ -68,6 +71,9 @@ async def extract(
     try:
         # 1) Pridobi tekst in št. strani
         text = extract_text(pdf_path)
+        embedding = generate_embedding(text)
+        print(f"USTVARJEN embedding: {len(embedding)} dimenzij")
+
         with fitz.open(pdf_path) as pdf_doc:
             total_pages = pdf_doc.page_count
 
@@ -80,6 +86,8 @@ async def extract(
             pdf_path=pdf_path,
             total_pages=total_pages,
             document_text=text,
+            embedding=embedding,
+            template_id=template_id if template_id else None,
             status="pending"
         )
         db.add(document)
@@ -351,3 +359,69 @@ def delete_template(template_id: str, db: Session = Depends(get_db)):
     db.commit()
 
     return {"status": "izbrisano"}
+
+@app.post("/api/find-similar")
+async def find_similar(
+    file: UploadFile = File(...),
+    limit: int = Form(5),
+    db: Session = Depends(get_db)
+):
+    """
+    Najde top K najbolj podobnih dokumentov za podan PDF.
+    Uporablja kosinusno podobnost na embedding-ih (pgvector).
+
+    Vrne tudi template informacije, da lahko frontend predlaga
+    isti template kot je bil uporabljen pri podobnih dokumentih.
+    """
+    # Začasno shrani PDF, ekstrahiraj tekst, generiraj embedding
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+        tmp.write(await file.read())
+        tmp_path = tmp.name
+
+    try:
+        text = extract_text(tmp_path)
+        if not text or not text.strip():
+            return {"similar_documents": [], "warning": "Dokument nima tekstovne vsebine"}
+
+        query_embedding = generate_embedding(text)
+        print(f"FIND-SIMILAR: generiran embedding za {file.filename}")
+
+        # pgvector kosinusna podobnost preko ORM
+        # cosine_distance: 0 = identično, 2 = nasprotno
+        # similarity = 1 - distance: 1 = identično, 0 = popolnoma drugačno
+        results = (
+            db.query(
+                Document,
+                (1 - Document.embedding.cosine_distance(query_embedding)).label("similarity")
+            )
+            .filter(Document.embedding.is_not(None))
+            .order_by(Document.embedding.cosine_distance(query_embedding))
+            .limit(limit)
+            .all()
+        )
+
+        # Sestavi response
+        similar = []
+        for doc, sim in results:
+            # Če je dokument imel template, dodaj info
+            template_info = None
+            if doc.template_id and doc.template:
+                template_info = {
+                    "id": str(doc.template.id),
+                    "name": doc.template.name,
+                    "field_count": len(doc.template.template_fields),
+                    "document_type": doc.template.document_type,
+                }
+
+            similar.append({
+                "id": str(doc.id),
+                "filename": doc.filename,
+                "upload_date": doc.upload_date.isoformat(),
+                "similarity": round(float(sim), 3),
+                "template": template_info,
+            })
+
+        return {"similar_documents": similar}
+
+    finally:
+        os.remove(tmp_path)

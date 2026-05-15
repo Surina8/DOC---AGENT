@@ -18,9 +18,23 @@ function UploadPage({ onComplete }) {
   const [templateDocType, setTemplateDocType] = useState('contract');
   const [savingTemplate, setSavingTemplate] = useState(false);
 
+  // Similar documents (RAG)
+  const [similarDocs, setSimilarDocs] = useState([]);
+  const [searchingSimilar, setSearchingSimilar] = useState(false);
+
   useEffect(() => {
     loadTemplates();
   }, []);
+
+  // Avtomatski search za podobne dokumente ko se naloži file
+  useEffect(() => {
+    if (file) {
+      findSimilar();
+    } else {
+      setSimilarDocs([]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [file]);
 
   async function loadTemplates() {
     try {
@@ -28,6 +42,25 @@ function UploadPage({ onComplete }) {
       setTemplates(response.data.templates || []);
     } catch (err) {
       console.error('Napaka pri nalaganju predlog:', err);
+    }
+  }
+
+  async function findSimilar() {
+    if (!file) return;
+    setSearchingSimilar(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('limit', 5);
+      const response = await axios.post(
+        'http://localhost:8000/api/find-similar',
+        formData
+      );
+      setSimilarDocs(response.data.similar_documents || []);
+    } catch (err) {
+      console.error('Napaka pri iskanju podobnih:', err);
+    } finally {
+      setSearchingSimilar(false);
     }
   }
 
@@ -43,12 +76,15 @@ function UploadPage({ onComplete }) {
         alert(response.data.error);
         return;
       }
-      // Pretvori format: API vrne {key, description}, state pričakuje isto
       setFields(response.data.fields || []);
       setError(null);
     } catch (err) {
       setError('Napaka pri nalaganju predloge.');
     }
+  }
+
+  async function applyTemplateFromSimilar(templateId) {
+    await handleTemplateSelect(templateId);
   }
 
   async function handleSaveTemplate() {
@@ -72,11 +108,9 @@ function UploadPage({ onComplete }) {
           field_description: f.description,
         })),
       });
-      // Reset form
       setTemplateName('');
       setTemplateDescription('');
       setShowSaveModal(false);
-      // Refresh template list
       loadTemplates();
       alert('Predloga shranjena!');
     } catch (err) {
@@ -117,7 +151,7 @@ function UploadPage({ onComplete }) {
       );
       if (response.data.fields) {
         setFields(response.data.fields);
-        setSelectedTemplateId(''); // Resetni izbor template-a
+        setSelectedTemplateId('');
       }
     } catch (err) {
       setError('Napaka pri predlaganju polj. Poskusi znova.');
@@ -134,6 +168,10 @@ function UploadPage({ onComplete }) {
       const formData = new FormData();
       formData.append('file', file);
       formData.append('fields', JSON.stringify(fields));
+      // Pošlji template_id če je predloga izbrana
+      if (selectedTemplateId) {
+        formData.append('template_id', selectedTemplateId);
+      }
       const response = await axios.post(
         'http://localhost:8000/api/extract',
         formData
@@ -158,6 +196,27 @@ function UploadPage({ onComplete }) {
     const updated = [...fields];
     updated[index][prop] = value;
     setFields(updated);
+  }
+
+  function getSimilarityColor(sim) {
+    if (sim >= 0.85) return '#22c55e';
+    if (sim >= 0.7) return '#f59e0b';
+    return '#5a6070';
+  }
+
+  function getSimilarityLabel(sim) {
+    if (sim >= 0.85) return 'Zelo podobno';
+    if (sim >= 0.7) return 'Sorodno';
+    return 'Različno';
+  }
+
+  function formatDate(isoString) {
+    const date = new Date(isoString);
+    return date.toLocaleDateString('sl-SI', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+    });
   }
 
   return (
@@ -209,6 +268,56 @@ function UploadPage({ onComplete }) {
       {/* Napaka */}
       {error && (
         <div className="error-box">{error}</div>
+      )}
+
+      {/* Panel podobnih dokumentov (RAG) */}
+      {file && (searchingSimilar || similarDocs.length > 0) && (
+        <div className="similar-panel">
+          <div className="similar-header">
+            <span className="similar-icon">🔍</span>
+            <span className="similar-title">
+              {searchingSimilar
+                ? 'Iščem podobne dokumente v bazi...'
+                : `Najdeno ${similarDocs.length} podobnih dokumentov`}
+            </span>
+          </div>
+          {!searchingSimilar && (
+            <div className="similar-list">
+              {similarDocs.map((doc) => (
+                <div key={doc.id} className="similar-card">
+                  <div className="similar-card-main">
+                    <div className="similar-card-row">
+                      <span className="similar-filename">{doc.filename}</span>
+                      <span
+                        className="similar-score"
+                        style={{
+                          color: getSimilarityColor(doc.similarity),
+                          borderColor: getSimilarityColor(doc.similarity),
+                        }}
+                      >
+                        {getSimilarityLabel(doc.similarity)} • {Math.round(doc.similarity * 100)}%
+                      </span>
+                    </div>
+                    <div className="similar-meta">
+                      <span>📅 {formatDate(doc.upload_date)}</span>
+                      {doc.template && (
+                        <span>📋 Uporabljen template: <strong>{doc.template.name}</strong></span>
+                      )}
+                    </div>
+                  </div>
+                  {doc.template && (
+                    <button
+                      className="btn-primary btn-sm"
+                      onClick={() => applyTemplateFromSimilar(doc.template.id)}
+                    >
+                      Uporabi ta template
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       )}
 
       {/* Template selector */}
