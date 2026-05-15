@@ -862,3 +862,354 @@
   color: #e8eaf0;
   font-weight: 600;
 }
+
+/* ─── Batch upload stran ─── */
+
+.batch-upload-page {
+  max-width: 900px;
+}
+
+.batch-config {
+  background: #13161b;
+  border: 1px solid #2a2f3a;
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 20px;
+}
+
+.batch-label {
+  display: block;
+  font-size: 12px;
+  color: #9aa0b0;
+  margin-bottom: 6px;
+  margin-top: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.batch-label:first-child {
+  margin-top: 0;
+}
+
+.batch-input {
+  width: 100%;
+  background: #1a1e25;
+  border: 1px solid #2a2f3a;
+  color: #e8eaf0;
+  padding: 10px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-family: inherit;
+}
+
+.batch-input:focus {
+  outline: none;
+  border-color: #3b82f6;
+}
+
+.batch-files-list {
+  background: #13161b;
+  border: 1px solid #2a2f3a;
+  border-radius: 8px;
+  margin-top: 16px;
+  overflow: hidden;
+}
+
+.batch-files-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background: #1a1e25;
+  border-bottom: 1px solid #2a2f3a;
+  font-size: 12px;
+  color: #9aa0b0;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+}
+
+.batch-file-item {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 16px;
+  align-items: center;
+  padding: 10px 16px;
+  border-bottom: 1px solid #1e2228;
+}
+
+.batch-file-item:last-child {
+  border-bottom: none;
+}
+
+.batch-file-name {
+  font-family: 'JetBrains Mono', 'Courier New', monospace;
+  font-size: 13px;
+  color: #e8eaf0;
+}
+
+.batch-file-size {
+  font-size: 12px;
+  color: #5a6070;
+}
+
+/* ─── Batch progress card ─── */
+
+.batch-progress-card {
+  background: #13161b;
+  border: 1px solid #2a2f3a;
+  border-radius: 10px;
+  padding: 24px;
+}
+
+.batch-progress-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 20px;
+}
+
+.batch-progress-title {
+  font-size: 20px;
+  font-weight: 600;
+  color: #e8eaf0;
+  margin-bottom: 4px;
+}
+
+.batch-progress-sub {
+  font-size: 13px;
+  color: #9aa0b0;
+}
+
+.batch-progress-sub strong {
+  color: #e8eaf0;
+}
+
+.batch-status-badge {
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.batch-status-badge.processing {
+  background: #1e2d4a;
+  color: #3b82f6;
+}
+
+.batch-status-badge.completed {
+  background: #0a2e1e;
+  color: #22c55e;
+}
+
+.batch-status-badge.failed {
+  background: #2e0a0a;
+  color: #ef4444;
+}
+
+.batch-progress-bar-wrap {
+  margin-bottom: 24px;
+}
+
+.batch-progress-bar {
+  height: 12px;
+  background: #1a1e25;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.batch-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #3b82f6, #22c55e);
+  transition: width 0.3s ease;
+}
+
+.batch-progress-text {
+  margin-top: 8px;
+  font-size: 13px;
+  color: #9aa0b0;
+  text-align: right;
+}
+
+.batch-docs-preview {
+  background: #0d0f12;
+  border: 1px solid #2a2f3a;
+  border-radius: 6px;
+  padding: 16px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.batch-docs-preview-title {
+  font-size: 12px;
+  color: #9aa0b0;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 12px;
+}
+
+.batch-doc-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 0;
+  font-size: 13px;
+  border-bottom: 1px solid #1e2228;
+}
+
+.batch-doc-row:last-child {
+  border-bottom: none;
+}
+
+.batch-doc-name {
+  font-family: 'JetBrains Mono', 'Courier New', monospace;
+  color: #e8eaf0;
+}
+
+.batch-doc-status {
+  font-weight: 600;
+}
+
+.batch-actions {
+  margin-top: 24px;
+  display: flex;
+  gap: 10px;
+}
+
+/* ─── Batch results stran ─── */
+
+.batch-results-page {
+  max-width: 100%;
+}
+
+.batch-results-header {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.batch-results-info {
+  flex: 1;
+  min-width: 200px;
+}
+
+.batch-results-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #e8eaf0;
+  margin-bottom: 4px;
+}
+
+.batch-results-meta {
+  display: flex;
+  gap: 16px;
+  font-size: 12px;
+  color: #5a6070;
+  flex-wrap: wrap;
+}
+
+.batch-results-meta strong {
+  color: #e8eaf0;
+}
+
+.batch-results-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.batch-results-table-wrap {
+  overflow-x: auto;
+  background: #13161b;
+  border: 1px solid #2a2f3a;
+  border-radius: 8px;
+}
+
+.batch-results-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.batch-results-table thead {
+  background: #1a1e25;
+}
+
+.batch-results-table th {
+  text-align: left;
+  padding: 10px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #9aa0b0;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  border-bottom: 1px solid #2a2f3a;
+  white-space: nowrap;
+}
+
+.batch-results-table td {
+  padding: 10px 12px;
+  color: #e8eaf0;
+  border-bottom: 1px solid #1e2228;
+  vertical-align: top;
+}
+
+.batch-results-table tr:hover {
+  background: #1a1e25;
+}
+
+.batch-results-filename {
+  font-family: 'JetBrains Mono', 'Courier New', monospace;
+  color: #3b82f6;
+  font-weight: 500;
+}
+
+.batch-results-cell {
+  max-width: 250px;
+}
+
+.batch-results-conf {
+  font-size: 10px;
+  margin-top: 2px;
+  font-weight: 600;
+}
+
+.sticky-col {
+  position: sticky;
+  left: 0;
+  background: #13161b;
+  z-index: 1;
+  border-right: 1px solid #2a2f3a;
+}
+
+.batch-results-table thead .sticky-col {
+  background: #1a1e25;
+}
+
+/* Mini progress bar v batch list-u */
+
+.batch-mini-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.batch-mini-bar {
+  flex: 1;
+  height: 6px;
+  background: #1a1e25;
+  border-radius: 3px;
+  overflow: hidden;
+  min-width: 80px;
+}
+
+.batch-mini-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #3b82f6, #22c55e);
+}
+
+.batches-list-page {
+  max-width: 1400px;
+}

@@ -14,9 +14,17 @@ from models import Document, Extraction, Field
 
 from pydantic import BaseModel
 from typing import List, Optional
-from models import FieldTemplate, TemplateField
+from models import FieldTemplate, TemplateField, Batch
 
 from embeddings import generate_embedding
+
+import threading
+from sqlalchemy.orm import joinedload
+from models import Batch
+
+from fastapi.responses import StreamingResponse
+import io
+
 
 load_dotenv()
 
@@ -425,3 +433,357 @@ async def find_similar(
 
     finally:
         os.remove(tmp_path)
+
+@app.post("/api/batches")
+async def create_batch(
+    files: list[UploadFile] = File(...),
+    name: str = Form(...),
+    fields: str = Form(...),
+    template_id: str = Form(""),
+    db: Session = Depends(get_db)
+):
+    """
+    Ustvari nov batch z eksplicitnimi polji.
+    `fields` je obvezen JSON array — backend ne ugiba.
+    `template_id` je opcijski (samo za sledenje).
+    """
+    if not files:
+        return {"error": "Ni datotek za naložiti"}
+
+    try:
+        fields_list = json.loads(fields)
+    except Exception:
+        return {"error": "Neveljaven JSON za fields"}
+
+    if not fields_list:
+        return {"error": "Vsaj eno polje mora biti definirano"}
+
+    # 1) Ustvari Batch zapis
+    batch = Batch(
+        name=name,
+        template_id=template_id if template_id else None,
+        status="processing",
+        total_documents=len(files),
+        completed_documents=0,
+    )
+    db.add(batch)
+    db.flush()
+    batch_id = str(batch.id)
+
+    # 2) Shrani vse PDF-je in ustvari Document zapise
+    document_ids = []
+    for file in files:
+        pdf_filename = f"{batch_id[:8]}_{file.filename}"
+        pdf_path = os.path.join(PDF_DIR, pdf_filename)
+        content = await file.read()
+        with open(pdf_path, "wb") as f:
+            f.write(content)
+
+        text = extract_text(pdf_path)
+        with fitz.open(pdf_path) as pdf_doc:
+            total_pages = pdf_doc.page_count
+
+        document = Document(
+            filename=file.filename,
+            pdf_path=pdf_path,
+            total_pages=total_pages,
+            document_text=text,
+            batch_id=batch.id,
+            template_id=batch.template_id,
+            status="pending"
+        )
+        db.add(document)
+        db.flush()
+        document_ids.append(str(document.id))
+
+    db.commit()
+    print(f"USTVARJEN Batch: {batch_id} ({len(files)} datotek, {len(fields_list)} polj)")
+
+    # 3) Zaženi background thread za procesiranje
+    thread = threading.Thread(
+        target=process_batch_background,
+        args=(batch_id, document_ids, fields_list),
+        daemon=True
+    )
+    thread.start()
+
+    return {
+        "batch_id": batch_id,
+        "name": name,
+        "total": len(files),
+        "status": "processing"
+    }
+
+
+def process_batch_background(batch_id: str, document_ids: list, fields_list: list):
+    """
+    Background thread funkcija — procesira vse dokumente v batch-u z eksplicitnimi polji.
+    """
+    print(f"BATCH {batch_id[:8]}: začenjam procesiranje {len(document_ids)} dokumentov")
+    db = SessionLocal()
+    try:
+        batch = db.query(Batch).filter(Batch.id == batch_id).first()
+        if not batch:
+            print(f"BATCH {batch_id[:8]}: ne obstaja")
+            return
+
+        # Procesira en dokument naenkrat
+        for doc_id in document_ids:
+            try:
+                document = db.query(Document).filter(Document.id == doc_id).first()
+                if not document:
+                    continue
+
+                # 1) Embedding
+                document.embedding = generate_embedding(document.document_text)
+
+                # 2) LLM ekstrakcija
+                prompt = build_extract_prompt(fields_list, document.document_text)
+                raw = call_llm(prompt)
+                extraction_data = json.loads(raw)
+
+                # 3) Najdi koordinate + confidence
+                results = find_coordinates_and_confidence(document.pdf_path, extraction_data)
+
+                confidences = [v["confidence"] for v in results.values() if v.get("confidence") is not None]
+                avg_conf = sum(confidences) / len(confidences) if confidences else 0.0
+
+                # 4) Shrani Extraction
+                extraction = Extraction(
+                    document_id=document.id,
+                    model_used="openai/gpt-4o-mini",
+                    avg_confidence=avg_conf,
+                    raw_llm_response=extraction_data
+                )
+                db.add(extraction)
+                db.flush()
+
+                # 5) Shrani Fields
+                for field_key, field_data in results.items():
+                    field_record = Field(
+                        extraction_id=extraction.id,
+                        field_key=field_key,
+                        field_value=field_data.get("value"),
+                        source_text=field_data.get("source_text"),
+                        confidence=field_data.get("confidence") or 0.0,
+                        page_number=field_data.get("page"),
+                        rectangles=field_data.get("rectangles", [])
+                    )
+                    db.add(field_record)
+
+                # 6) Posodobi progress
+                batch.completed_documents += 1
+                db.commit()
+                print(f"BATCH {batch_id[:8]}: {batch.completed_documents}/{batch.total_documents} — {document.filename}")
+
+            except Exception as e:
+                db.rollback()
+                print(f"BATCH {batch_id[:8]}: NAPAKA pri {doc_id[:8]}: {e}")
+                batch.completed_documents += 1
+                db.commit()
+
+        # Zaključi batch
+        batch.status = "completed"
+        db.commit()
+        print(f"BATCH {batch_id[:8]}: KONČANO ({batch.completed_documents}/{batch.total_documents})")
+
+    finally:
+        db.close()
+
+
+@app.get("/api/batches")
+def list_batches(db: Session = Depends(get_db)):
+    """Seznam vseh batch-ov, sortiran po datumu."""
+    batches = db.query(Batch).order_by(Batch.created_date.desc()).all()
+
+    result = []
+    for b in batches:
+        template_name = None
+        if b.template_id and b.template:
+            template_name = b.template.name
+
+        result.append({
+            "id": str(b.id),
+            "name": b.name,
+            "created_date": b.created_date.isoformat(),
+            "status": b.status,
+            "total_documents": b.total_documents,
+            "completed_documents": b.completed_documents,
+            "template_id": str(b.template_id) if b.template_id else None,
+            "template_name": template_name,
+        })
+
+    return {"batches": result}
+
+
+@app.get("/api/batches/{batch_id}")
+def get_batch(batch_id: str, db: Session = Depends(get_db)):
+    """
+    Vrne batch z vsemi dokumenti in njihovimi rezultati.
+    Frontend bo polled ta endpoint za progress in končne rezultate.
+    """
+    batch = db.query(Batch).filter(Batch.id == batch_id).first()
+    if not batch:
+        return {"error": "Batch ne obstaja"}
+
+    template_name = None
+    if batch.template_id and batch.template:
+        template_name = batch.template.name
+
+    documents = []
+    for doc in batch.documents:
+        latest_extraction = None
+        if doc.extractions:
+            latest_extraction = max(doc.extractions, key=lambda e: e.extraction_date)
+
+        fields_summary = {}
+        if latest_extraction:
+            for field in latest_extraction.fields:
+                fields_summary[field.field_key] = {
+                    "value": field.field_value,
+                    "confidence": field.confidence,
+                }
+
+        documents.append({
+            "id": str(doc.id),
+            "filename": doc.filename,
+            "total_pages": doc.total_pages,
+            "avg_confidence": latest_extraction.avg_confidence if latest_extraction else None,
+            "fields": fields_summary,
+            "has_extraction": latest_extraction is not None,
+        })
+
+    return {
+        "id": str(batch.id),
+        "name": batch.name,
+        "created_date": batch.created_date.isoformat(),
+        "status": batch.status,
+        "total_documents": batch.total_documents,
+        "completed_documents": batch.completed_documents,
+        "template_id": str(batch.template_id) if batch.template_id else None,
+        "template_name": template_name,
+        "documents": documents,
+    }
+
+
+@app.delete("/api/batches/{batch_id}")
+def delete_batch(batch_id: str, db: Session = Depends(get_db)):
+    """Izbriše batch in vse povezane dokumente (cascade)."""
+    batch = db.query(Batch).filter(Batch.id == batch_id).first()
+    if not batch:
+        return {"error": "Batch ne obstaja"}
+
+    # Izbriši PDF datoteke z diska
+    for doc in batch.documents:
+        if os.path.exists(doc.pdf_path):
+            try:
+                os.remove(doc.pdf_path)
+            except Exception:
+                pass
+
+    db.delete(batch)
+    db.commit()
+
+    return {"status": "izbrisano"}
+
+
+@app.get("/api/batches/{batch_id}/export")
+def export_batch(batch_id: str, db: Session = Depends(get_db)):
+    """
+    Vrne vsa polja iz batch-a v "flat" JSON formatu primernem za Excel.
+    Vsaka vrstica = en dokument, stolpci = polja.
+    """
+    batch = db.query(Batch).filter(Batch.id == batch_id).first()
+    if not batch:
+        return {"error": "Batch ne obstaja"}
+
+    rows = []
+    for doc in batch.documents:
+        if not doc.extractions:
+            continue
+        latest = max(doc.extractions, key=lambda e: e.extraction_date)
+
+        row = {
+            "filename": doc.filename,
+            "avg_confidence": latest.avg_confidence,
+        }
+        for field in latest.fields:
+            row[field.field_key] = field.field_value
+            row[f"{field.field_key}_confidence"] = field.confidence
+
+        rows.append(row)
+
+    return {
+        "batch_name": batch.name,
+        "rows": rows,
+    }
+
+
+
+@app.get("/api/batches/{batch_id}/export-excel")
+def export_batch_excel(batch_id: str, db: Session = Depends(get_db)):
+    """Vrne batch rezultate kot Excel datoteko."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment
+
+    batch = db.query(Batch).filter(Batch.id == batch_id).first()
+    if not batch:
+        return {"error": "Batch ne obstaja"}
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Rezultati"
+
+    # 1) Zberi vse unique field keys iz vseh dokumentov
+    all_keys = set()
+    for doc in batch.documents:
+        if doc.extractions:
+            latest = max(doc.extractions, key=lambda e: e.extraction_date)
+            for field in latest.fields:
+                all_keys.add(field.field_key)
+    sorted_keys = sorted(all_keys)
+
+    # 2) Header vrstica
+    headers = ["Datoteka", "Strani", "Avg. zanesljivost"] + sorted_keys
+    ws.append(headers)
+
+    # Stil header-ja
+    for cell in ws[1]:
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = PatternFill("solid", fgColor="3B82F6")
+        cell.alignment = Alignment(horizontal="left", vertical="center")
+
+    # 3) Data vrstice
+    for doc in batch.documents:
+        if not doc.extractions:
+            continue
+        latest = max(doc.extractions, key=lambda e: e.extraction_date)
+        field_map = {f.field_key: (f.field_value or "") for f in latest.fields}
+
+        row = [
+            doc.filename,
+            doc.total_pages or 0,
+            round(latest.avg_confidence, 2) if latest.avg_confidence else 0,
+        ]
+        for key in sorted_keys:
+            row.append(field_map.get(key, ""))
+        ws.append(row)
+
+    # 4) Auto-size stolpci
+    for col in ws.columns:
+        max_len = max(len(str(c.value or '')) for c in col)
+        ws.column_dimensions[col[0].column_letter].width = min(max_len + 2, 40)
+
+    # 5) Stream kot Excel datoteka
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+
+    safe_name = "".join(c if c.isalnum() else "_" for c in batch.name)
+    filename = f"{safe_name}_{batch_id[:8]}.xlsx"
+
+    return StreamingResponse(
+        buffer,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+    )

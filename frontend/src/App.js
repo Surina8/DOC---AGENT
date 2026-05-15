@@ -4,10 +4,14 @@ import UploadPage from './pages/UploadPage';
 import ReviewPage from './pages/ReviewPage';
 import HistoryPage from './pages/HistoryPage';
 import TemplatesPage from './pages/TemplatesPage';
+import BatchUploadPage from './pages/BatchUploadPage';
+import BatchListPage from './pages/BatchListPage';
+import BatchResultsPage from './pages/BatchResultsPage';
 
 function App() {
   const [activePage, setActivePage] = useState('upload');
   const [extractionResult, setExtractionResult] = useState(null);
+  const [viewBatchId, setViewBatchId] = useState(null);
 
   function goToReview(result) {
     setExtractionResult(result);
@@ -17,6 +21,16 @@ function App() {
   function openHistoricalDocument(documentData) {
     setExtractionResult(documentData);
     setActivePage('review');
+  }
+
+  function viewBatchResults(batchId) {
+    setViewBatchId(batchId);
+    setActivePage('batch-results');
+  }
+
+  function backToBatchList() {
+    setViewBatchId(null);
+    setActivePage('batch-list');
   }
 
   return (
@@ -34,13 +48,23 @@ function App() {
             Nov dokument
           </div>
           <div
+            className={`nav-item ${activePage === 'batch' ? 'active' : ''}`}
+            onClick={() => setActivePage('batch')}
+          >
+            Batch upload
+          </div>
+          <div
+            className={`nav-item ${activePage === 'batch-list' || activePage === 'batch-results' ? 'active' : ''}`}
+            onClick={() => setActivePage('batch-list')}
+          >
+            Batch arhiv
+          </div>
+          <div
             className={`nav-item ${activePage === 'review' ? 'active' : ''}`}
             onClick={() => setActivePage('review')}
           >
             Human Review
-            {extractionResult && (
-              <span className="nav-badge">1</span>
-            )}
+            {extractionResult && <span className="nav-badge">1</span>}
           </div>
           <div
             className={`nav-item ${activePage === 'history' ? 'active' : ''}`}
@@ -67,6 +91,9 @@ function App() {
         <div className="topbar">
           <div className="page-title">
             {activePage === 'upload' && 'Nov dokument'}
+            {activePage === 'batch' && 'Batch upload'}
+            {activePage === 'batch-list' && 'Batch arhiv'}
+            {activePage === 'batch-results' && 'Rezultati batch-a'}
             {activePage === 'review' && 'Human Review'}
             {activePage === 'history' && 'Zgodovina dokumentov'}
             {activePage === 'templates' && 'Predloge polj'}
@@ -74,18 +101,15 @@ function App() {
           </div>
         </div>
         <div className="content">
-          {activePage === 'upload' && (
-            <UploadPage onComplete={goToReview} />
+          {activePage === 'upload' && <UploadPage onComplete={goToReview} />}
+          {activePage === 'batch' && <BatchUploadPage onViewResults={viewBatchResults} />}
+          {activePage === 'batch-list' && <BatchListPage onOpenBatch={viewBatchResults} />}
+          {activePage === 'batch-results' && (
+            <BatchResultsPage batchId={viewBatchId} onBack={backToBatchList} />
           )}
-          {activePage === 'review' && (
-            <ReviewPage data={extractionResult} />
-          )}
-          {activePage === 'history' && (
-            <HistoryPage onOpenDocument={openHistoricalDocument} />
-          )}
-          {activePage === 'templates' && (
-            <TemplatesPage />
-          )}
+          {activePage === 'review' && <ReviewPage data={extractionResult} />}
+          {activePage === 'history' && <HistoryPage onOpenDocument={openHistoricalDocument} />}
+          {activePage === 'templates' && <TemplatesPage />}
           {activePage === 'dashboard' && <p>Dashboard — kmalu</p>}
         </div>
       </div>
