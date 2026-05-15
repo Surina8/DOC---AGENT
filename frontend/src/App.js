@@ -3,6 +3,7 @@ import './App.css';
 import UploadPage from './pages/UploadPage';
 import ReviewPage from './pages/ReviewPage';
 import HistoryPage from './pages/HistoryPage';
+import TemplatesPage from './pages/TemplatesPage';
 
 function App() {
   const [activePage, setActivePage] = useState('upload');
@@ -48,6 +49,12 @@ function App() {
             Zgodovina
           </div>
           <div
+            className={`nav-item ${activePage === 'templates' ? 'active' : ''}`}
+            onClick={() => setActivePage('templates')}
+          >
+            Predloge
+          </div>
+          <div
             className={`nav-item ${activePage === 'dashboard' ? 'active' : ''}`}
             onClick={() => setActivePage('dashboard')}
           >
@@ -62,6 +69,7 @@ function App() {
             {activePage === 'upload' && 'Nov dokument'}
             {activePage === 'review' && 'Human Review'}
             {activePage === 'history' && 'Zgodovina dokumentov'}
+            {activePage === 'templates' && 'Predloge polj'}
             {activePage === 'dashboard' && 'Dashboard'}
           </div>
         </div>
@@ -74,6 +82,9 @@ function App() {
           )}
           {activePage === 'history' && (
             <HistoryPage onOpenDocument={openHistoricalDocument} />
+          )}
+          {activePage === 'templates' && (
+            <TemplatesPage />
           )}
           {activePage === 'dashboard' && <p>Dashboard — kmalu</p>}
         </div>

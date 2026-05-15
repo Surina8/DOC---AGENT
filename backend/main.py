@@ -12,6 +12,10 @@ from confidence import find_coordinates_and_confidence
 from database import get_db
 from models import Document, Extraction, Field
 
+from pydantic import BaseModel
+from typing import List, Optional
+from models import FieldTemplate, TemplateField
+
 load_dotenv()
 
 app = FastAPI()
@@ -229,5 +233,121 @@ def delete_document(document_id: str, db: Session = Depends(get_db)):
             os.remove(pdf_path)
         except Exception as e:
             print(f"Opozorilo: PDF ni mogel biti izbrisan: {e}")
+
+    return {"status": "izbrisano"}
+
+
+class TemplateFieldInput(BaseModel):
+    field_key: str
+    field_description: str
+
+
+class TemplateCreateRequest(BaseModel):
+    name: str
+    description: Optional[str] = None
+    document_type: Optional[str] = None
+    fields: List[TemplateFieldInput]
+
+
+@app.post("/api/templates")
+def create_template(
+    payload: TemplateCreateRequest,
+    db: Session = Depends(get_db)
+):
+    """Ustvari nov field template iz uporabnikovih trenutnih polj."""
+    template = FieldTemplate(
+        name=payload.name,
+        description=payload.description,
+        document_type=payload.document_type,
+    )
+    db.add(template)
+    db.flush()
+
+    for idx, field in enumerate(payload.fields):
+        tf = TemplateField(
+            template_id=template.id,
+            field_key=field.field_key,
+            field_description=field.field_description,
+            order_index=idx,
+        )
+        db.add(tf)
+
+    db.commit()
+    print(f"USTVARJEN Template: {template.id} ({template.name}) z {len(payload.fields)} polji")
+
+    return {
+        "id": str(template.id),
+        "name": template.name,
+        "field_count": len(payload.fields),
+    }
+
+
+@app.get("/api/templates")
+def list_templates(db: Session = Depends(get_db)):
+    """Vrne seznam vseh template-ov."""
+    templates = db.query(FieldTemplate).order_by(
+        FieldTemplate.usage_count.desc(),
+        FieldTemplate.created_date.desc()
+    ).all()
+
+    result = []
+    for t in templates:
+        result.append({
+            "id": str(t.id),
+            "name": t.name,
+            "description": t.description,
+            "document_type": t.document_type,
+            "created_date": t.created_date.isoformat(),
+            "usage_count": t.usage_count,
+            "field_count": len(t.template_fields),
+        })
+
+    return {"templates": result}
+
+
+@app.get("/api/templates/{template_id}")
+def get_template(template_id: str, db: Session = Depends(get_db)):
+    """Vrne en template z vsemi polji."""
+    template = db.query(FieldTemplate).filter(
+        FieldTemplate.id == template_id
+    ).first()
+
+    if not template:
+        return {"error": "Template ne obstaja"}
+
+    # Povečaj usage_count - vsako branje je "uporaba"
+    # (kasneje lahko premakneš v ločen endpoint /use)
+    template.usage_count += 1
+    db.commit()
+
+    return {
+        "id": str(template.id),
+        "name": template.name,
+        "description": template.description,
+        "document_type": template.document_type,
+        "created_date": template.created_date.isoformat(),
+        "usage_count": template.usage_count,
+        "fields": [
+            {
+                "key": tf.field_key,
+                "description": tf.field_description,
+            }
+            for tf in template.template_fields
+        ],
+    }
+
+
+@app.delete("/api/templates/{template_id}")
+def delete_template(template_id: str, db: Session = Depends(get_db)):
+    """Izbriše template. Cascade izbriše tudi vsa template_fields."""
+    template = db.query(FieldTemplate).filter(
+        FieldTemplate.id == template_id
+    ).first()
+
+    if not template:
+        return {"error": "Template ne obstaja"}
+
+    db.delete(template)
+    db.commit()
 
     return {"status": "izbrisano"}
