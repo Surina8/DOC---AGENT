@@ -25,6 +25,7 @@ from models import Batch
 from fastapi.responses import StreamingResponse
 import io
 
+import math
 
 load_dotenv()
 
@@ -56,6 +57,11 @@ async def suggest_fields(file: UploadFile = File(...)):
         text = extract_text(tmp_path)
         prompt = build_suggest_prompt(text)
         raw = call_llm(prompt)
+
+        print("=== SUGGEST RAW RESPONSE ===")
+        print(repr(raw))  # repr pokaže tudi prazne stringe, novike, itd.
+        print("=" * 30)
+
         result = json.loads(raw)
         return result
     finally:
@@ -114,7 +120,13 @@ async def extract(
 
         # 4) Najdi koordinate in confidence
         results = find_coordinates_and_confidence(pdf_path, extraction_data)
-
+        # DEBUG: pokaži OCR bloke in iskanja za prvih nekaj polj
+        from confidence import debug_print_blocks
+        debug_print_blocks(pdf_path)
+        for key, data in list(extraction_data.items())[:3]:
+            if isinstance(data, dict) and data.get("value"):
+                print(f"\n>> Iščem: '{data['value']}'")
+                debug_print_blocks(pdf_path, data['value'])
         # 5) Izračunaj povprečno confidence
         confidences = [
             v["confidence"] for v in results.values()
@@ -425,7 +437,7 @@ async def find_similar(
                 "id": str(doc.id),
                 "filename": doc.filename,
                 "upload_date": doc.upload_date.isoformat(),
-                "similarity": round(float(sim), 3),
+                "similarity": round(max(0.0, min(1.0, float(sim))), 3) if math.isfinite(float(sim or 0)) else 0.0,
                 "template": template_info,
             })
 
