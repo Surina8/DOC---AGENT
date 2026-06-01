@@ -6,7 +6,7 @@ const COLORS = [
   '#eab308', '#ef4444', '#8b5cf6', '#10b981'
 ];
 
-function ReviewPage({ data }) {
+function ReviewPage({ data, onConfirmed }) {
   const canvasRef = useRef(null);
   const pdfContainerRef = useRef(null);
   const [pdfDoc, setPdfDoc] = useState(null);
@@ -167,9 +167,15 @@ function ReviewPage({ data }) {
         <div style={{ fontSize: '18px', color: '#22c55e', marginBottom: '8px' }}>
           Podatki potrjeni!
         </div>
-        <div style={{ color: '#5a6070', fontSize: '13px' }}>
-          Dokument je bil uspešno procesiran.
+        <div style={{ color: '#5a6070', fontSize: '13px', marginBottom: '24px' }}>
+          Dokument je bil uspešno procesiran in shranjen.
         </div>
+        <button
+          className="btn-primary"
+          onClick={() => onConfirmed && onConfirmed()}
+        >
+          Nov dokument →
+        </button>
       </div>
     );
   }

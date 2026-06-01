@@ -23,6 +23,12 @@ function App() {
     setActivePage('review');
   }
 
+  function handleReviewComplete() {
+    // Po potrjevanju dokumenta: počisti state in pojdi na upload
+    setExtractionResult(null);
+    setActivePage('upload');
+  }
+
   function viewBatchResults(batchId) {
     setViewBatchId(batchId);
     setActivePage('batch-results');
@@ -107,7 +113,9 @@ function App() {
           {activePage === 'batch-results' && (
             <BatchResultsPage batchId={viewBatchId} onBack={backToBatchList} />
           )}
-          {activePage === 'review' && <ReviewPage data={extractionResult} />}
+          {activePage === 'review' && (
+            <ReviewPage data={extractionResult} onConfirmed={handleReviewComplete} />
+          )}
           {activePage === 'history' && <HistoryPage onOpenDocument={openHistoricalDocument} />}
           {activePage === 'templates' && <TemplatesPage />}
           {activePage === 'dashboard' && <p>Dashboard — kmalu</p>}

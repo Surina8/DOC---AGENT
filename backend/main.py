@@ -9,7 +9,7 @@ from pdf_reader import extract_text
 from prompt_builder import build_suggest_prompt, build_extract_prompt
 from llm_client import call_llm
 from confidence import find_coordinates_and_confidence
-from database import get_db
+from database import get_db, SessionLocal
 from models import Document, Extraction, Field
 
 from pydantic import BaseModel
