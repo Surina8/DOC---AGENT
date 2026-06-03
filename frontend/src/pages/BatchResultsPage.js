@@ -20,17 +20,6 @@ function BatchResultsPage({ batchId, onBack, onOpenDocument }) {
     }
   }
 
-  function formatDate(isoString) {
-    if (!isoString) return '—';
-    const date = new Date(isoString);
-    return date.toLocaleDateString('sl-SI', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  }
 
   useEffect(() => {
     if (batchId) loadBatch();

@@ -13,13 +13,16 @@ function App() {
   const [activePage, setActivePage] = useState('upload');
   const [extractionResult, setExtractionResult] = useState(null);
   const [viewBatchId, setViewBatchId] = useState(null);
+  const [previousPage, setPreviousPage] = useState(null);
 
   function goToReview(result) {
+    setPreviousPage(activePage);   // zapomni od kod prišel
     setExtractionResult(result);
     setActivePage('review');
   }
 
   function openHistoricalDocument(documentData) {
+    setPreviousPage(activePage);   // zapomni od kod prišel
     setExtractionResult(documentData);
     setActivePage('review');
   }
@@ -27,7 +30,15 @@ function App() {
   function handleReviewComplete() {
     // Po potrjevanju dokumenta: počisti state in pojdi na upload
     setExtractionResult(null);
+    setPreviousPage(null);
     setActivePage('upload');
+  }
+
+  function handleBackFromReview() {
+    // Vrni se na tisto stran, kjer si bil prej
+    const target = previousPage || 'upload';
+    setPreviousPage(null);
+    setActivePage(target);
   }
 
   function viewBatchResults(batchId) {
@@ -38,6 +49,20 @@ function App() {
   function backToBatchList() {
     setViewBatchId(null);
     setActivePage('batch-list');
+  }
+
+  function getPageLabel(page) {
+    const labels = {
+      upload: 'Nov dokument',
+      batch: 'Batch upload',
+      'batch-list': 'Batch arhiv',
+      'batch-results': 'Rezultati batch-a',
+      history: 'Zgodovina',
+      archive: 'Arhiv',
+      templates: 'Predloge',
+      dashboard: 'Dashboard',
+    };
+    return labels[page] || 'Nazaj';
   }
 
   return (
@@ -126,7 +151,12 @@ function App() {
             />
           )}
           {activePage === 'review' && (
-            <ReviewPage data={extractionResult} onConfirmed={handleReviewComplete} />
+            <ReviewPage
+              data={extractionResult}
+              onConfirmed={handleReviewComplete}
+              onBack={previousPage ? handleBackFromReview : null}
+              previousPageLabel={getPageLabel(previousPage)}
+            />
           )}
           {activePage === 'history' && <HistoryPage onOpenDocument={openHistoricalDocument} />}
           {activePage === 'archive' && <ArchivePage onOpenDocument={openHistoricalDocument} />}

@@ -7,7 +7,7 @@ const COLORS = [
   '#eab308', '#ef4444', '#8b5cf6', '#10b981'
 ];
 
-function ReviewPage({ data, onConfirmed }) {
+function ReviewPage({ data, onConfirmed, onBack, previousPageLabel }) {
   const canvasRef = useRef(null);
   const pdfContainerRef = useRef(null);
   const [pdfDoc, setPdfDoc] = useState(null);
@@ -258,6 +258,17 @@ function ReviewPage({ data, onConfirmed }) {
 
   return (
     <div className="review-page">
+
+      {onBack && (
+        <div style={{ marginBottom: '16px' }}>
+          <button
+            className="btn-back"
+            onClick={onBack}
+          >
+            ← Nazaj na {previousPageLabel || 'prejšnjo stran'}
+          </button>
+        </div>
+      )}
 
       {hasLowConfidence && (
         <div className="warning-box">

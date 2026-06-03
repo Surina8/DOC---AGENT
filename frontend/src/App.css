@@ -533,6 +533,28 @@
   font-size: 12px;
 }
 
+/* ─── Back button (review page) ─── */
+
+.btn-back {
+  background: transparent;
+  border: 1px solid #2a2f3a;
+  color: #9aa0b0;
+  padding: 8px 14px;
+  font-size: 13px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn-back:hover {
+  background: #1a1e25;
+  border-color: #3b82f6;
+  color: #3b82f6;
+}
+
 /* ─── View toggle ─── */
 
 .view-toggle {
