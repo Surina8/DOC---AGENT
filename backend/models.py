@@ -154,6 +154,10 @@ class Extraction(Base):
     avg_confidence = Column(Float, nullable=True)
     raw_llm_response = Column(JSONB, nullable=True)
 
+    # Human review tracking
+    confirmed_at = Column(DateTime, nullable=True)
+    corrections_count = Column(Integer, default=0, nullable=False)
+
     document = relationship("Document", back_populates="extractions")
     fields = relationship(
         "Field",
@@ -173,11 +177,14 @@ class Field(Base):
         nullable=False
     )
     field_key = Column(String(200), nullable=False)
-    field_value = Column(Text, nullable=True)
+    field_value = Column(Text, nullable=True)  # trenutna vrednost (po korekciji ali AI)
     source_text = Column(Text, nullable=True)
     confidence = Column(Float, default=0.0, nullable=False)
     page_number = Column(Integer, nullable=True)
     rectangles = Column(JSONB, nullable=True)
+
+    # Human review tracking
     user_corrected = Column(Boolean, default=False, nullable=False)
+    original_value = Column(Text, nullable=True)  # AI-jeva izvirna vrednost pred popravkom
 
     extraction = relationship("Extraction", back_populates="fields")

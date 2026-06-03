@@ -1,8 +1,9 @@
-from fastapi import FastAPI, UploadFile, File, Form, Depends
+from fastapi import FastAPI, UploadFile, File, Form, Depends, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 from dotenv import load_dotenv
+from datetime import datetime
 import tempfile, os, json, fitz
 
 from pdf_reader import extract_text
@@ -163,6 +164,7 @@ async def extract(
 
         return {
             "document_id": str(document.id),
+            "extraction_id": str(extraction.id),
             "pdf_url": f"http://localhost:8000/pdfs/{pdf_filename}",
             "results": results
         }
@@ -231,10 +233,13 @@ def get_document(document_id: str, db: Session = Depends(get_db)):
 
     return {
         "document_id": str(doc.id),
+        "extraction_id": str(latest.id),
         "filename": doc.filename,
         "upload_date": doc.upload_date.isoformat(),
         "total_pages": doc.total_pages,
         "status": doc.status,
+        "confirmed_at": latest.confirmed_at.isoformat() if latest.confirmed_at else None,
+        "corrections_count": latest.corrections_count,
         "pdf_url": f"http://localhost:8000/pdfs/{doc.filename}",
         "results": results,
     }
@@ -263,6 +268,71 @@ def delete_document(document_id: str, db: Session = Depends(get_db)):
             print(f"Opozorilo: PDF ni mogel biti izbrisan: {e}")
 
     return {"status": "izbrisano"}
+
+
+@app.post("/api/extractions/{extraction_id}/confirm")
+def confirm_extraction(
+    extraction_id: str,
+    corrections: dict = Body(...),
+    db: Session = Depends(get_db)
+):
+    """
+    Označi extraction kot 'human-reviewed' in shrani popravke.
+
+    corrections: dict {field_key: new_value, ...}
+      — vsa polja, ki jih uporabnik vidi v Review UI
+
+    Za vsako polje:
+      - če je new_value drugačen od trenutne vrednosti → posodobi + arhiviraj original
+      - če je enako → samo označi kot pregledan (no-op za vrednost)
+
+    Vrne povzetek korekcij za UI/logging.
+    """
+    extraction = db.query(Extraction).filter(Extraction.id == extraction_id).first()
+    if not extraction:
+        return {"error": "Extraction ne obstaja"}
+
+    changes = []
+    for field in extraction.fields:
+        if field.field_key not in corrections:
+            continue
+        new_val = corrections[field.field_key]
+        # Normaliziraj None / prazen string
+        if new_val is None:
+            new_val = ""
+        new_val = str(new_val)
+        current_val = field.field_value or ""
+
+        if new_val != current_val:
+            # Arhiviraj original (samo prvič — če je že popravljen, ne prepiši)
+            if not field.user_corrected:
+                field.original_value = field.field_value
+            field.field_value = new_val
+            field.user_corrected = True
+            changes.append({
+                "field_key": field.field_key,
+                "original": current_val,
+                "corrected": new_val,
+            })
+
+    # Označi extraction kot potrjen
+    extraction.confirmed_at = datetime.utcnow()
+    extraction.corrections_count = (extraction.corrections_count or 0) + len(changes)
+
+    # Posodobi tudi document status
+    if extraction.document:
+        extraction.document.status = "reviewed"
+
+    db.commit()
+    print(f"POTRJEN Extraction: {extraction_id[:8]} — {len(changes)} korekcij")
+
+    return {
+        "status": "confirmed",
+        "extraction_id": str(extraction.id),
+        "confirmed_at": extraction.confirmed_at.isoformat(),
+        "corrections": changes,
+        "total_corrections": extraction.corrections_count,
+    }
 
 
 class TemplateFieldInput(BaseModel):

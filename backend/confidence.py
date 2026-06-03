@@ -409,13 +409,165 @@ def _search_candidates(value, source_text):
 
 
 # ─────────────────────────────────────────────────────────────
+# NATIVE PIPELINE (tekstovni PDF-ji)
+# Token coverage + spatial bonus — brez fuzzy, brez label proximity
+# ─────────────────────────────────────────────────────────────
+
+def _tokenize_value(value_str):
+    """Razbije vrednost na tokene (besede). Ohrani številke s pikami/vejicami."""
+    if not value_str:
+        return []
+    normalized = ' '.join(value_str.split())  # collapse whitespace
+    return [t for t in normalized.split() if t]
+
+
+def _normalize_token(s):
+    """
+    Lowercase + odstrani ločila z robov (ohrani slovenske črke in interno strukturo).
+    Primer: "Stražiščar," → "stražiščar", "I.T." → "i.t", "(les)." → "les"
+    """
+    if not s:
+        return ""
+    import string
+    return s.lower().strip(string.punctuation + ' \t\n\r')
+
+
+def _best_cluster(token_matches):
+    """
+    Iz seznama možnih pozicij za vsak token izberi kombinacijo,
+    ki minimizira spatial spread (požrešen pristop).
+
+    token_matches: list[list[word_tuple]] — za vsak token seznam možnih pozicij
+    word_tuple = (x0, y0, x1, y1, "word", ...)
+    """
+    valid = [(i, m) for i, m in enumerate(token_matches) if m]
+    if not valid:
+        return []
+
+    # Začni z najredkejšim tokenom (manj možnosti = manj ambiguous)
+    valid.sort(key=lambda x: len(x[1]))
+    chosen = [valid[0][1][0]]
+
+    # Za vsak naslednji token izberi pozicijo najbližjo trenutnemu clusteru
+    for _, matches in valid[1:]:
+        cluster_y = sum(p[1] for p in chosen) / len(chosen)
+        cluster_x = sum(p[0] for p in chosen) / len(chosen)
+        best = min(
+            matches,
+            key=lambda p: abs(p[1] - cluster_y) + 0.1 * abs(p[0] - cluster_x)
+        )
+        chosen.append(best)
+
+    return chosen
+
+
+def _native_pipeline(value, source_text, doc):
+    """
+    Token coverage + spatial bonus za tekstovne PDF-je.
+
+    Filozofija:
+    - Ali so vsi tokeni vrednosti najdeni v PDF-ju?  → coverage score
+    - Kako blizu so si geografsko?                   → spatial bonus
+    - Brez fuzzy: če ni eksakten match, je halucinacija
+    - Brez label proximity: native PDF rabi izvor, ne ugibanje
+    - Multi-block matchi NISO penalizirani
+
+    Vrne: (page_num, rectangles, confidence) ali None
+    """
+    if not value:
+        return None
+    value_str = str(value).strip()
+    if not value_str:
+        return None
+
+    # ── KORAK 1: Eksakten search za samo VALUE (bbox naj bo na vrednosti, ne na labelu) ──
+    for page_num, page in enumerate(doc):
+        instances = page.search_for(value_str)
+        if instances:
+            # Vzamemo VSE pravokotnike — PyMuPDF za multi-line match vrne enega per vrstico
+            rects = [
+                {"x": r.x0, "y": r.y0, "width": r.width, "height": r.height}
+                for r in instances
+            ]
+            return (page_num, rects, 0.95)
+
+    # ── KORAK 2: Token coverage + spatial bonus ──
+    tokens = _tokenize_value(value_str)
+    if not tokens:
+        return None
+
+    best_result = None
+    best_score = 0.0
+
+    for page_num, page in enumerate(doc):
+        # PyMuPDF words: list of (x0, y0, x1, y1, "word", block_no, line_no, word_no)
+        words_data = page.get_text("words")
+        if not words_data:
+            continue
+
+        # Za vsak token najdi vse pozicije v dokumentu
+        # Uporabljamo _normalize_token, ki odstrani ločila z robov (npr. "Stražiščar," → "stražiščar")
+        token_matches = []
+        for token in tokens:
+            token_norm = _normalize_token(token)
+            if not token_norm:
+                token_matches.append([])
+                continue
+            matches = [w for w in words_data if _normalize_token(w[4]) == token_norm]
+            token_matches.append(matches)
+
+        # Coverage = % najdenih tokenov
+        found_count = sum(1 for m in token_matches if m)
+        if found_count == 0:
+            continue
+        coverage = found_count / len(tokens)
+
+        # Izberi najboljši cluster pozicij
+        chosen = _best_cluster(token_matches)
+        if not chosen:
+            continue
+
+        # Spatial bonus — normaliziran glede na dolžino vrednosti
+        # Logika: dolge vrednosti so naravno razpršene, kratke pa ne smejo biti
+        ys = [p[1] for p in chosen]
+        heights = [p[3] - p[1] for p in chosen]
+        avg_h = sum(heights) / len(heights) if heights else 12
+        y_range = (max(ys) - min(ys)) if len(ys) > 1 else 0
+
+        # Pričakovana razpršenost: ~pol vrstice na token
+        expected_spread = avg_h * max(1, len(chosen) * 0.5)
+
+        if y_range <= avg_h * 1.5:
+            spatial_bonus = 0.10              # vsi v isti vrstici
+        elif y_range <= expected_spread * 1.5:
+            spatial_bonus = 0.05              # znotraj pričakovanega razpona
+        elif y_range <= expected_spread * 3:
+            spatial_bonus = 0.0               # razpršeno a glede na dolžino verjetno
+        else:
+            spatial_bonus = -0.10             # preveč razpršeno za to dolžino
+
+        confidence = max(0.0, min(1.0, coverage + spatial_bonus))
+
+        if confidence > best_score:
+            best_score = confidence
+            rects = [
+                {"x": p[0], "y": p[1], "width": p[2] - p[0], "height": p[3] - p[1]}
+                for p in chosen
+            ]
+            best_result = (page_num, rects, round(confidence, 2))
+
+    return best_result
+
+
+# ─────────────────────────────────────────────────────────────
 # GLAVNA FUNKCIJA
 # ─────────────────────────────────────────────────────────────
 
 def find_coordinates_and_confidence(pdf_path, extraction_result):
     """
-    OCR dokument: direktno iskanje skozi EasyOCR bloke (5 strategij)
-    Digitalni PDF: PyMuPDF search_for
+    Dispatch glede na tip dokumenta:
+    - OCR (skeniran): 5-strategy fuzzy matcher (ohranjen za handwriting)
+    - Native (tekstovni): token coverage + spatial bonus (nov)
     """
     try:
         from pdf_reader import get_ocr_blocks
@@ -425,6 +577,9 @@ def find_coordinates_and_confidence(pdf_path, extraction_result):
 
     doc = fitz.open(pdf_path)
     results = {}
+
+    pipeline_used = "OCR" if ocr_blocks else "NATIVE"
+    print(f"  → Pipeline: {pipeline_used}")
 
     for key, data in extraction_result.items():
         if isinstance(data, str):
@@ -445,61 +600,24 @@ def find_coordinates_and_confidence(pdf_path, extraction_result):
             }
             continue
 
-        # OCR dokument → 5 strategij
+        # === DISPATCH ===
         if ocr_blocks:
-            ocr_result = _find_in_ocr_blocks(value, source_text, ocr_blocks)
-            if ocr_result:
-                page_num, rectangles, confidence = ocr_result
-                results[key] = {
-                    "value": value,
-                    "source_text": source_text,
-                    "confidence": confidence,
-                    "rectangles": rectangles,
-                    "page": page_num,
-                }
-            else:
-                results[key] = {
-                    "value": value,
-                    "source_text": source_text,
-                    "confidence": 0.0,
-                    "rectangles": [],
-                    "page": None,
-                }
-            continue
+            # Skeniran → 5 strategij (ohranjen pipeline)
+            result = _find_in_ocr_blocks(value, source_text, ocr_blocks)
+        else:
+            # Tekstovni → token coverage + spatial bonus (nov pipeline)
+            result = _native_pipeline(value, source_text, doc)
 
-        # Digital PDF: PyMuPDF
-        found = False
-        for page_num, page in enumerate(doc):
-            candidates = _search_candidates(value, source_text)
-            instances = None
-            matched_text = None
-
-            for candidate in candidates:
-                inst = page.search_for(candidate)
-                if inst:
-                    instances = inst
-                    matched_text = candidate
-                    break
-
-            if instances:
-                rectangles = [
-                    {"x": r.x0, "y": r.y0, "width": r.width, "height": r.height}
-                    for r in instances
-                ]
-                base_conf = calculate_confidence(value, source_text, len(instances))
-                if matched_text != source_text:
-                    base_conf = max(0.5, base_conf - 0.2)
-                results[key] = {
-                    "value": value,
-                    "source_text": source_text,
-                    "confidence": round(base_conf, 2),
-                    "rectangles": rectangles,
-                    "page": page_num,
-                }
-                found = True
-                break
-
-        if not found:
+        if result:
+            page_num, rectangles, confidence = result
+            results[key] = {
+                "value": value,
+                "source_text": source_text,
+                "confidence": confidence,
+                "rectangles": rectangles,
+                "page": page_num,
+            }
+        else:
             results[key] = {
                 "value": value,
                 "source_text": source_text,
