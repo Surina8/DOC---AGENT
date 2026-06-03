@@ -7,6 +7,7 @@ import TemplatesPage from './pages/TemplatesPage';
 import BatchUploadPage from './pages/BatchUploadPage';
 import BatchListPage from './pages/BatchListPage';
 import BatchResultsPage from './pages/BatchResultsPage';
+import ArchivePage from './pages/ArchivePage';
 
 function App() {
   const [activePage, setActivePage] = useState('upload');
@@ -79,6 +80,12 @@ function App() {
             Zgodovina
           </div>
           <div
+            className={`nav-item ${activePage === 'archive' ? 'active' : ''}`}
+            onClick={() => setActivePage('archive')}
+          >
+            Arhiv
+          </div>
+          <div
             className={`nav-item ${activePage === 'templates' ? 'active' : ''}`}
             onClick={() => setActivePage('templates')}
           >
@@ -102,6 +109,7 @@ function App() {
             {activePage === 'batch-results' && 'Rezultati batch-a'}
             {activePage === 'review' && 'Human Review'}
             {activePage === 'history' && 'Zgodovina dokumentov'}
+            {activePage === 'archive' && 'Arhiv potrjenih'}
             {activePage === 'templates' && 'Predloge polj'}
             {activePage === 'dashboard' && 'Dashboard'}
           </div>
@@ -117,6 +125,7 @@ function App() {
             <ReviewPage data={extractionResult} onConfirmed={handleReviewComplete} />
           )}
           {activePage === 'history' && <HistoryPage onOpenDocument={openHistoricalDocument} />}
+          {activePage === 'archive' && <ArchivePage onOpenDocument={openHistoricalDocument} />}
           {activePage === 'templates' && <TemplatesPage />}
           {activePage === 'dashboard' && <p>Dashboard — kmalu</p>}
         </div>

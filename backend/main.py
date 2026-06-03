@@ -270,6 +270,259 @@ def delete_document(document_id: str, db: Session = Depends(get_db)):
     return {"status": "izbrisano"}
 
 
+@app.get("/api/archive")
+def list_archive(db: Session = Depends(get_db)):
+    """
+    Vrne vse POTRJENE dokumente (z extraction.confirmed_at != None).
+    Razlikuje se od /api/documents, ki vrne vse (vključno z nepotrjenimi).
+    """
+    docs = db.query(Document).order_by(Document.upload_date.desc()).all()
+
+    result = []
+    for doc in docs:
+        if not doc.extractions:
+            continue
+        latest = max(doc.extractions, key=lambda e: e.extraction_date)
+        if not latest.confirmed_at:
+            continue  # samo potrjeni
+
+        result.append({
+            "id": str(doc.id),
+            "extraction_id": str(latest.id),
+            "filename": doc.filename,
+            "upload_date": doc.upload_date.isoformat(),
+            "confirmed_at": latest.confirmed_at.isoformat(),
+            "total_pages": doc.total_pages,
+            "field_count": len(latest.fields),
+            "avg_confidence": latest.avg_confidence,
+            "corrections_count": latest.corrections_count or 0,
+            "template_id": str(doc.template_id) if doc.template_id else None,
+        })
+
+    return {"documents": result}
+
+
+@app.get("/api/documents/{document_id}/export")
+def export_single_document(
+    document_id: str,
+    format: str = "json",
+    db: Session = Depends(get_db)
+):
+    """
+    Izvozi en dokument v izbranem formatu: json | csv | excel
+    """
+    doc = db.query(Document).filter(Document.id == document_id).first()
+    if not doc or not doc.extractions:
+        return {"error": "Dokument ne obstaja ali nima ekstrakcij"}
+
+    latest = max(doc.extractions, key=lambda e: e.extraction_date)
+
+    fields_data = {}
+    for f in latest.fields:
+        fields_data[f.field_key] = {
+            "value": f.field_value,
+            "confidence": f.confidence,
+            "user_corrected": f.user_corrected,
+            "original_value": f.original_value,
+        }
+
+    metadata = {
+        "filename": doc.filename,
+        "upload_date": doc.upload_date.isoformat(),
+        "confirmed_at": latest.confirmed_at.isoformat() if latest.confirmed_at else None,
+        "avg_confidence": latest.avg_confidence,
+        "corrections_count": latest.corrections_count or 0,
+        "total_pages": doc.total_pages,
+    }
+
+    if format == "json":
+        content = json.dumps(
+            {"metadata": metadata, "fields": fields_data},
+            ensure_ascii=False,
+            indent=2
+        )
+        media_type = "application/json"
+        ext = "json"
+
+    elif format == "csv":
+        import csv as csv_module
+        buf = io.StringIO()
+        writer = csv_module.writer(buf)
+        writer.writerow(["field_key", "value", "confidence", "user_corrected", "original_value"])
+        for k, v in fields_data.items():
+            writer.writerow([
+                k,
+                v["value"] or "",
+                v["confidence"],
+                "yes" if v["user_corrected"] else "no",
+                v["original_value"] or ""
+            ])
+        content = buf.getvalue()
+        media_type = "text/csv"
+        ext = "csv"
+
+    elif format == "excel":
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, PatternFill
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Podatki"
+
+        # Metadata sheet
+        ws_meta = wb.create_sheet("Metapodatki")
+        for i, (k, v) in enumerate(metadata.items(), 1):
+            ws_meta.cell(row=i, column=1, value=k).font = Font(bold=True)
+            ws_meta.cell(row=i, column=2, value=str(v) if v is not None else "")
+
+        # Data sheet
+        headers = ["Polje", "Vrednost", "Zanesljivost", "Popravljeno", "Originalna vrednost"]
+        ws.append(headers)
+        for cell in ws[1]:
+            cell.font = Font(bold=True, color="FFFFFF")
+            cell.fill = PatternFill("solid", fgColor="3B82F6")
+
+        for k, v in fields_data.items():
+            ws.append([
+                k,
+                v["value"] or "",
+                round(v["confidence"], 2),
+                "Da" if v["user_corrected"] else "Ne",
+                v["original_value"] or ""
+            ])
+
+        buf = io.BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+        return StreamingResponse(
+            buf,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f'attachment; filename="{doc.filename}.xlsx"'}
+        )
+
+    else:
+        return {"error": f"Format '{format}' ni podprt. Uporabi: json, csv, excel"}
+
+    return StreamingResponse(
+        io.BytesIO(content.encode("utf-8")),
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{doc.filename}.{ext}"'}
+    )
+
+
+class BulkExportRequest(BaseModel):
+    document_ids: List[str]
+    format: str = "json"
+
+
+@app.post("/api/archive/export")
+def bulk_export(payload: BulkExportRequest, db: Session = Depends(get_db)):
+    """
+    Bulk export izbranih dokumentov v izbranem formatu.
+    """
+    if not payload.document_ids:
+        return {"error": "Ni izbranih dokumentov"}
+
+    docs_data = []
+    for doc_id in payload.document_ids:
+        doc = db.query(Document).filter(Document.id == doc_id).first()
+        if not doc or not doc.extractions:
+            continue
+        latest = max(doc.extractions, key=lambda e: e.extraction_date)
+
+        fields = {}
+        for f in latest.fields:
+            fields[f.field_key] = {
+                "value": f.field_value,
+                "confidence": f.confidence,
+                "user_corrected": f.user_corrected,
+            }
+
+        docs_data.append({
+            "filename": doc.filename,
+            "upload_date": doc.upload_date.isoformat(),
+            "confirmed_at": latest.confirmed_at.isoformat() if latest.confirmed_at else None,
+            "avg_confidence": latest.avg_confidence,
+            "fields": fields,
+        })
+
+    if payload.format == "json":
+        content = json.dumps({"documents": docs_data}, ensure_ascii=False, indent=2)
+        return StreamingResponse(
+            io.BytesIO(content.encode("utf-8")),
+            media_type="application/json",
+            headers={"Content-Disposition": 'attachment; filename="arhiv_export.json"'}
+        )
+
+    elif payload.format == "csv":
+        import csv as csv_module
+        # Zberi vse unique field keys
+        all_keys = set()
+        for d in docs_data:
+            all_keys.update(d["fields"].keys())
+        sorted_keys = sorted(all_keys)
+
+        buf = io.StringIO()
+        writer = csv_module.writer(buf)
+        writer.writerow(["filename", "confirmed_at", "avg_confidence"] + sorted_keys)
+        for d in docs_data:
+            row = [d["filename"], d["confirmed_at"], round(d["avg_confidence"] or 0, 2)]
+            for k in sorted_keys:
+                row.append(d["fields"].get(k, {}).get("value", ""))
+            writer.writerow(row)
+        return StreamingResponse(
+            io.BytesIO(buf.getvalue().encode("utf-8")),
+            media_type="text/csv",
+            headers={"Content-Disposition": 'attachment; filename="arhiv_export.csv"'}
+        )
+
+    elif payload.format == "excel":
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, PatternFill
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Pregled"
+
+        all_keys = set()
+        for d in docs_data:
+            all_keys.update(d["fields"].keys())
+        sorted_keys = sorted(all_keys)
+
+        headers = ["Datoteka", "Potrjen", "Zanesljivost"] + sorted_keys
+        ws.append(headers)
+        for cell in ws[1]:
+            cell.font = Font(bold=True, color="FFFFFF")
+            cell.fill = PatternFill("solid", fgColor="3B82F6")
+
+        for d in docs_data:
+            row = [
+                d["filename"],
+                d["confirmed_at"] or "",
+                round(d["avg_confidence"] or 0, 2)
+            ]
+            for k in sorted_keys:
+                row.append(d["fields"].get(k, {}).get("value", ""))
+            ws.append(row)
+
+        # Auto-width
+        for col in ws.columns:
+            max_len = max(len(str(cell.value)) for cell in col if cell.value)
+            ws.column_dimensions[col[0].column_letter].width = min(max_len + 2, 50)
+
+        buf = io.BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+        return StreamingResponse(
+            buf,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": 'attachment; filename="arhiv_export.xlsx"'}
+        )
+
+    else:
+        return {"error": f"Format '{payload.format}' ni podprt"}
+
+
 @app.post("/api/extractions/{extraction_id}/confirm")
 def confirm_extraction(
     extraction_id: str,

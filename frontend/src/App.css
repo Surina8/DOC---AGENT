@@ -471,7 +471,9 @@
   background: #13161b;
   border: 1px solid #2a2f3a;
   border-radius: 8px;
-  overflow: hidden;
+  /* overflow: visible — da export dropdown ni odrezan */
+  overflow: visible;
+  position: relative;
 }
 
 .history-table thead {
@@ -529,6 +531,40 @@
 .btn-sm {
   padding: 6px 12px;
   font-size: 12px;
+}
+
+/* ─── Export dropdown menu ─── */
+
+.export-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  background: #1a1d24;
+  border: 1px solid #2a2f3a;
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  min-width: 160px;
+  z-index: 1000;
+  overflow: hidden;
+}
+
+.export-menu-item {
+  padding: 10px 14px;
+  font-size: 13px;
+  color: #e8eaf0;
+  cursor: pointer;
+  transition: background 0.15s;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.export-menu-item:hover {
+  background: #232830;
+}
+
+.export-menu-item:not(:last-child) {
+  border-bottom: 1px solid #2a2f3a;
 }
 
 /* ─── Template selector ─── */
