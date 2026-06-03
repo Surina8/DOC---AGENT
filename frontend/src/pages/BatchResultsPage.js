@@ -1,10 +1,36 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 
-function BatchResultsPage({ batchId, onBack }) {
+function BatchResultsPage({ batchId, onBack, onOpenDocument }) {
   const [batch, setBatch] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [viewMode, setViewMode] = useState('table'); // 'table' | 'grid'
+
+  async function handleOpenDocument(docId) {
+    try {
+      const response = await axios.get(`http://localhost:8000/api/documents/${docId}`);
+      if (response.data.error) {
+        alert(response.data.error);
+        return;
+      }
+      if (onOpenDocument) onOpenDocument(response.data);
+    } catch (err) {
+      alert('Napaka pri odpiranju dokumenta.');
+    }
+  }
+
+  function formatDate(isoString) {
+    if (!isoString) return '—';
+    const date = new Date(isoString);
+    return date.toLocaleDateString('sl-SI', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  }
 
   useEffect(() => {
     if (batchId) loadBatch();
@@ -87,6 +113,23 @@ function BatchResultsPage({ batchId, onBack }) {
         </div>
 
         <div className="batch-results-actions">
+          {/* View mode toggle */}
+          <div className="view-toggle" style={{ marginRight: '8px' }}>
+            <button
+              className={`view-toggle-btn ${viewMode === 'table' ? 'active' : ''}`}
+              onClick={() => setViewMode('table')}
+              title="Tabelni pogled"
+            >
+              ☰ Tabela
+            </button>
+            <button
+              className={`view-toggle-btn ${viewMode === 'grid' ? 'active' : ''}`}
+              onClick={() => setViewMode('grid')}
+              title="Kartični pogled"
+            >
+              ▦ Kartice
+            </button>
+          </div>
           <button className="btn-secondary" onClick={downloadJSON}>
             📥 JSON
           </button>
@@ -99,6 +142,35 @@ function BatchResultsPage({ batchId, onBack }) {
       {batch.documents.length === 0 ? (
         <div style={{ padding: '40px', textAlign: 'center', color: '#5a6070' }}>
           Batch nima dokumentov.
+        </div>
+      ) : viewMode === 'grid' ? (
+        <div className="archive-grid">
+          {batch.documents.map(doc => {
+            const conf = doc.avg_confidence;
+            let confClass = 'conf-medium';
+            if (conf === null || conf === undefined) confClass = 'conf-medium';
+            else if (conf >= 0.85) confClass = 'conf-high';
+            else if (conf < 0.6) confClass = 'conf-low';
+
+            const fieldCount = Object.keys(doc.fields || {}).length;
+
+            return (
+              <div
+                key={doc.id}
+                className={`archive-card ${confClass}`}
+                onClick={() => handleOpenDocument(doc.id)}
+              >
+                <div className="archive-card-conf">
+                  {conf !== null && conf !== undefined ? `${Math.round(conf * 100)}%` : '—'}
+                </div>
+                <div className="archive-card-filename">{doc.filename}</div>
+                <div className="archive-card-meta">
+                  <span>{fieldCount} polj</span>
+                  {doc.total_pages && <span> • {doc.total_pages} strani</span>}
+                </div>
+              </div>
+            );
+          })}
         </div>
       ) : (
         <div className="batch-results-table-wrap">
@@ -115,7 +187,12 @@ function BatchResultsPage({ batchId, onBack }) {
             </thead>
             <tbody>
               {batch.documents.map(doc => (
-                <tr key={doc.id}>
+                <tr
+                  key={doc.id}
+                  onClick={() => handleOpenDocument(doc.id)}
+                  style={{ cursor: 'pointer' }}
+                  className="history-row"
+                >
                   <td className="sticky-col batch-results-filename">{doc.filename}</td>
                   <td>{doc.total_pages || '—'}</td>
                   <td>
