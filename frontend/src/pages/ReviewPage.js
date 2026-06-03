@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import axios from 'axios';
 
 const COLORS = [
   '#3b82f6', '#22c55e', '#f59e0b', '#a855f7',
@@ -113,9 +114,46 @@ function ReviewPage({ data, onConfirmed }) {
     return 'Nizka';
   }
 
-  function handleConfirm() {
-    console.log('Potrjeni podatki:', editedValues);
-    setConfirmed(true);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState(null);
+  const [saveSummary, setSaveSummary] = useState(null);
+
+  async function handleConfirm() {
+    if (!data?.extraction_id) {
+      setSaveError('Manjka extraction_id — ne morem shraniti.');
+      return;
+    }
+
+    setSaving(true);
+    setSaveError(null);
+
+    try {
+      const response = await axios.post(
+        `http://localhost:8000/api/extractions/${data.extraction_id}/confirm`,
+        editedValues
+      );
+
+      if (response.data.error) {
+        setSaveError(response.data.error);
+        return;
+      }
+
+      setSaveSummary({
+        total: response.data.corrections?.length || 0,
+        corrections: response.data.corrections || [],
+      });
+      setConfirmed(true);
+    } catch (err) {
+      console.error('Confirm error:', err);
+      setSaveError(
+        err.response?.data?.error
+        || err.response?.data?.detail
+        || err.message
+        || 'Neznana napaka pri shranjevanju'
+      );
+    } finally {
+      setSaving(false);
+    }
   }
 
   function jumpToField(key) {
@@ -162,14 +200,47 @@ function ReviewPage({ data, onConfirmed }) {
 
   if (confirmed) {
     return (
-      <div style={{ padding: '40px', textAlign: 'center' }}>
+      <div style={{ padding: '40px', textAlign: 'center', maxWidth: '600px', margin: '0 auto' }}>
         <div style={{ fontSize: '32px', marginBottom: '16px' }}>✓</div>
         <div style={{ fontSize: '18px', color: '#22c55e', marginBottom: '8px' }}>
-          Podatki potrjeni!
+          Podatki potrjeni in shranjeni!
         </div>
-        <div style={{ color: '#5a6070', fontSize: '13px', marginBottom: '24px' }}>
-          Dokument je bil uspešno procesiran in shranjen.
-        </div>
+        {saveSummary && (
+          <div style={{ color: '#5a6070', fontSize: '13px', marginBottom: '16px' }}>
+            {saveSummary.total === 0 ? (
+              <span>Ni bilo popravkov — vse vrednosti so bile sprejete kot AI-jeve.</span>
+            ) : (
+              <span>Shranjenih <strong>{saveSummary.total}</strong> popravkov.</span>
+            )}
+          </div>
+        )}
+        {saveSummary?.corrections?.length > 0 && (
+          <div style={{
+            textAlign: 'left',
+            background: '#1a1d24',
+            padding: '12px 16px',
+            borderRadius: '8px',
+            marginBottom: '24px',
+            fontSize: '12px',
+            color: '#9aa0b0'
+          }}>
+            <div style={{ marginBottom: '8px', fontWeight: 'bold', color: '#cbd5e1' }}>
+              Popravki:
+            </div>
+            {saveSummary.corrections.map((c, i) => (
+              <div key={i} style={{ marginBottom: '6px' }}>
+                <code style={{ color: '#60a5fa' }}>{c.field_key}</code>
+                <div style={{ paddingLeft: '8px', color: '#71717a' }}>
+                  <span style={{ textDecoration: 'line-through' }}>
+                    {c.original || '(prazno)'}
+                  </span>
+                  {' → '}
+                  <span style={{ color: '#22c55e' }}>{c.corrected || '(prazno)'}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
         <button
           className="btn-primary"
           onClick={() => onConfirmed && onConfirmed()}
@@ -254,11 +325,21 @@ function ReviewPage({ data, onConfirmed }) {
             })}
           </div>
 
+          {saveError && (
+            <div className="error-box" style={{ marginBottom: '12px' }}>
+              {saveError}
+            </div>
+          )}
+
           <div className="review-actions">
-            <button className="btn-run" onClick={handleConfirm}>
-              ✓ Potrdi in shrani
+            <button
+              className="btn-run"
+              onClick={handleConfirm}
+              disabled={saving}
+            >
+              {saving ? 'Shranjujem...' : '✓ Potrdi in shrani'}
             </button>
-            <button className="btn-secondary">
+            <button className="btn-secondary" disabled={saving}>
               ✗ Zavrni
             </button>
           </div>
