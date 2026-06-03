@@ -119,7 +119,11 @@ function App() {
           {activePage === 'batch' && <BatchUploadPage onViewResults={viewBatchResults} />}
           {activePage === 'batch-list' && <BatchListPage onOpenBatch={viewBatchResults} />}
           {activePage === 'batch-results' && (
-            <BatchResultsPage batchId={viewBatchId} onBack={backToBatchList} />
+            <BatchResultsPage
+              batchId={viewBatchId}
+              onBack={backToBatchList}
+              onOpenDocument={openHistoricalDocument}
+            />
           )}
           {activePage === 'review' && (
             <ReviewPage data={extractionResult} onConfirmed={handleReviewComplete} />

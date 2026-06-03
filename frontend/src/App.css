@@ -533,6 +533,137 @@
   font-size: 12px;
 }
 
+/* ─── View toggle ─── */
+
+.view-toggle {
+  display: flex;
+  background: #13161b;
+  border: 1px solid #2a2f3a;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.view-toggle-btn {
+  background: transparent;
+  border: none;
+  padding: 8px 14px;
+  font-size: 13px;
+  color: #9aa0b0;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.view-toggle-btn:hover {
+  background: #1a1e25;
+  color: #e8eaf0;
+}
+
+.view-toggle-btn.active {
+  background: #3b82f6;
+  color: white;
+}
+
+.view-toggle-btn:not(:last-child) {
+  border-right: 1px solid #2a2f3a;
+}
+
+/* ─── Archive grid (kartični pogled) ─── */
+
+.archive-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 16px;
+}
+
+.archive-card {
+  position: relative;
+  background: #13161b;
+  border: 2px solid #2a2f3a;
+  border-radius: 12px;
+  padding: 24px 20px;
+  cursor: pointer;
+  transition: all 0.2s;
+  overflow: hidden;
+}
+
+.archive-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  opacity: 0.06;
+  pointer-events: none;
+  transition: opacity 0.2s;
+}
+
+.archive-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.archive-card:hover::before {
+  opacity: 0.12;
+}
+
+.archive-card.conf-high {
+  border-color: #22c55e;
+}
+.archive-card.conf-high::before {
+  background: #22c55e;
+}
+
+.archive-card.conf-medium {
+  border-color: #f59e0b;
+}
+.archive-card.conf-medium::before {
+  background: #f59e0b;
+}
+
+.archive-card.conf-low {
+  border-color: #ef4444;
+}
+.archive-card.conf-low::before {
+  background: #ef4444;
+}
+
+.archive-card-conf {
+  position: relative;
+  font-size: 36px;
+  font-weight: 800;
+  line-height: 1;
+  margin-bottom: 12px;
+  font-family: 'JetBrains Mono', 'Courier New', monospace;
+}
+
+.archive-card.conf-high .archive-card-conf { color: #22c55e; }
+.archive-card.conf-medium .archive-card-conf { color: #f59e0b; }
+.archive-card.conf-low .archive-card-conf { color: #ef4444; }
+
+.archive-card-filename {
+  position: relative;
+  font-family: 'JetBrains Mono', 'Courier New', monospace;
+  font-size: 13px;
+  color: #e8eaf0;
+  margin-bottom: 8px;
+  word-break: break-word;
+  font-weight: 500;
+}
+
+.archive-card-meta {
+  position: relative;
+  font-size: 11px;
+  color: #9aa0b0;
+  margin-bottom: 4px;
+}
+
+.archive-card-date {
+  position: relative;
+  font-size: 11px;
+  color: #5a6070;
+}
+
 /* ─── Export dropdown menu ─── */
 
 .export-menu {

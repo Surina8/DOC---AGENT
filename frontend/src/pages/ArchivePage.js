@@ -8,6 +8,7 @@ function ArchivePage({ onOpenDocument }) {
   const [selected, setSelected] = useState(new Set());
   const [openExportMenu, setOpenExportMenu] = useState(null); // doc id ali 'bulk'
   const [exporting, setExporting] = useState(false);
+  const [viewMode, setViewMode] = useState('table'); // 'table' | 'grid'
 
   useEffect(() => {
     loadArchive();
@@ -171,13 +172,34 @@ function ArchivePage({ onOpenDocument }) {
       }}>
         <div className="section-title">
           Arhiv potrjenih dokumentov ({documents.length})
-          {selected.size > 0 && (
+          {selected.size > 0 && viewMode === 'table' && (
             <span style={{ marginLeft: '12px', fontSize: '13px', color: '#3b82f6' }}>
               ({selected.size} izbranih)
             </span>
           )}
         </div>
 
+        <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+          {/* View mode toggle */}
+          <div className="view-toggle">
+            <button
+              className={`view-toggle-btn ${viewMode === 'table' ? 'active' : ''}`}
+              onClick={() => setViewMode('table')}
+              title="Tabelni pogled"
+            >
+              ☰ Tabela
+            </button>
+            <button
+              className={`view-toggle-btn ${viewMode === 'grid' ? 'active' : ''}`}
+              onClick={() => setViewMode('grid')}
+              title="Kartični pogled"
+            >
+              ▦ Kartice
+            </button>
+          </div>
+
+          {/* Bulk export — samo v tabelnem pogledu */}
+          {viewMode === 'table' && (
         <div style={{ position: 'relative' }}>
           <button
             className="btn-primary"
@@ -203,9 +225,12 @@ function ArchivePage({ onOpenDocument }) {
             </div>
           )}
         </div>
+          )}
+        </div>
       </div>
 
-      {/* Tabela */}
+      {/* TABELA VIEW */}
+      {viewMode === 'table' && (
       <table className="history-table">
         <thead>
           <tr>
@@ -293,6 +318,41 @@ function ArchivePage({ onOpenDocument }) {
           ))}
         </tbody>
       </table>
+      )}
+
+      {/* GRID VIEW */}
+      {viewMode === 'grid' && (
+        <div className="archive-grid">
+          {documents.map(doc => {
+            const conf = doc.avg_confidence;
+            let confClass = 'conf-medium';
+            if (conf >= 0.85) confClass = 'conf-high';
+            else if (conf < 0.6) confClass = 'conf-low';
+
+            return (
+              <div
+                key={doc.id}
+                className={`archive-card ${confClass}`}
+                onClick={() => handleOpenDocument(doc.id)}
+              >
+                <div className="archive-card-conf">
+                  {conf !== null ? `${Math.round(conf * 100)}%` : '—'}
+                </div>
+                <div className="archive-card-filename">{doc.filename}</div>
+                <div className="archive-card-meta">
+                  <span>{doc.field_count} polj</span>
+                  {doc.corrections_count > 0 && (
+                    <span> • {doc.corrections_count} popravkov</span>
+                  )}
+                </div>
+                <div className="archive-card-date">
+                  {formatDate(doc.confirmed_at)}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {exporting && (
         <div style={{
