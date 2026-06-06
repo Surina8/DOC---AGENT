@@ -408,24 +408,18 @@ def _search_candidates(value, source_text):
     return [c for c in candidates if c and not (c in seen or seen.add(c))]
 
 
-# ─────────────────────────────────────────────────────────────
-# NATIVE PIPELINE (tekstovni PDF-ji)
-# Token coverage + spatial bonus — brez fuzzy, brez label proximity
-# ─────────────────────────────────────────────────────────────
+# Pipeline za tekstovne PDF-je
 
 def _tokenize_value(value_str):
-    """Razbije vrednost na tokene (besede). Ohrani številke s pikami/vejicami."""
+    """Razbije vrednost na besede."""
     if not value_str:
         return []
-    normalized = ' '.join(value_str.split())  # collapse whitespace
+    normalized = ' '.join(value_str.split())
     return [t for t in normalized.split() if t]
 
 
 def _normalize_token(s):
-    """
-    Lowercase + odstrani ločila z robov (ohrani slovenske črke in interno strukturo).
-    Primer: "Stražiščar," → "stražiščar", "I.T." → "i.t", "(les)." → "les"
-    """
+    """Lowercase, odstrani ločila z robov."""
     if not s:
         return ""
     import string
@@ -433,22 +427,14 @@ def _normalize_token(s):
 
 
 def _best_cluster(token_matches):
-    """
-    Iz seznama možnih pozicij za vsak token izberi kombinacijo,
-    ki minimizira spatial spread (požrešen pristop).
-
-    token_matches: list[list[word_tuple]] — za vsak token seznam možnih pozicij
-    word_tuple = (x0, y0, x1, y1, "word", ...)
-    """
+    """Iz možnih pozicij izberi tiste, ki so geografsko najbolj skupaj."""
     valid = [(i, m) for i, m in enumerate(token_matches) if m]
     if not valid:
         return []
 
-    # Začni z najredkejšim tokenom (manj možnosti = manj ambiguous)
     valid.sort(key=lambda x: len(x[1]))
     chosen = [valid[0][1][0]]
 
-    # Za vsak naslednji token izberi pozicijo najbližjo trenutnemu clusteru
     for _, matches in valid[1:]:
         cluster_y = sum(p[1] for p in chosen) / len(chosen)
         cluster_x = sum(p[0] for p in chosen) / len(chosen)
@@ -463,16 +449,8 @@ def _best_cluster(token_matches):
 
 def _native_pipeline(value, source_text, doc):
     """
-    Token coverage + spatial bonus za tekstovne PDF-je.
-
-    Filozofija:
-    - Ali so vsi tokeni vrednosti najdeni v PDF-ju?  → coverage score
-    - Kako blizu so si geografsko?                   → spatial bonus
-    - Brez fuzzy: če ni eksakten match, je halucinacija
-    - Brez label proximity: native PDF rabi izvor, ne ugibanje
-    - Multi-block matchi NISO penalizirani
-
-    Vrne: (page_num, rectangles, confidence) ali None
+    Iskanje vrednosti v tekstovnem PDF-ju.
+    Vrne: (page_num, rectangles, confidence) ali None.
     """
     if not value:
         return None
@@ -480,18 +458,17 @@ def _native_pipeline(value, source_text, doc):
     if not value_str:
         return None
 
-    # ── KORAK 1: Eksakten search za samo VALUE (bbox naj bo na vrednosti, ne na labelu) ──
+    # 1. Direkten search za vrednost
     for page_num, page in enumerate(doc):
         instances = page.search_for(value_str)
         if instances:
-            # Vzamemo VSE pravokotnike — PyMuPDF za multi-line match vrne enega per vrstico
             rects = [
                 {"x": r.x0, "y": r.y0, "width": r.width, "height": r.height}
                 for r in instances
             ]
             return (page_num, rects, 0.95)
 
-    # ── KORAK 2: Token coverage + spatial bonus ──
+    # 2. Po posameznih besedah
     tokens = _tokenize_value(value_str)
     if not tokens:
         return None
@@ -559,15 +536,10 @@ def _native_pipeline(value, source_text, doc):
     return best_result
 
 
-# ─────────────────────────────────────────────────────────────
-# GLAVNA FUNKCIJA
-# ─────────────────────────────────────────────────────────────
-
 def find_coordinates_and_confidence(pdf_path, extraction_result):
     """
-    Dispatch glede na tip dokumenta:
-    - OCR (skeniran): 5-strategy fuzzy matcher (ohranjen za handwriting)
-    - Native (tekstovni): token coverage + spatial bonus (nov)
+    Za skenirane dokumente uporabi OCR pipeline,
+    za tekstovne PDF-je pa native pipeline.
     """
     try:
         from pdf_reader import get_ocr_blocks
@@ -600,12 +572,9 @@ def find_coordinates_and_confidence(pdf_path, extraction_result):
             }
             continue
 
-        # === DISPATCH ===
         if ocr_blocks:
-            # Skeniran → 5 strategij (ohranjen pipeline)
             result = _find_in_ocr_blocks(value, source_text, ocr_blocks)
         else:
-            # Tekstovni → token coverage + spatial bonus (nov pipeline)
             result = _native_pipeline(value, source_text, doc)
 
         if result:

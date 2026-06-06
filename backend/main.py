@@ -302,6 +302,24 @@ def list_archive(db: Session = Depends(get_db)):
     return {"documents": result}
 
 
+def _safe_filename(name: str, ext: str) -> str:
+    """
+    Naredi ASCII-safe ime datoteke za HTTP Content-Disposition.
+    Slovenske črke → ASCII ekvivalenti, posebni znaki → _.
+    """
+    import os, re, unicodedata
+    base = os.path.splitext(name)[0]  # strip .pdf
+    # Slovenske črke → ASCII
+    base = unicodedata.normalize('NFKD', base).encode('ascii', 'ignore').decode('ascii')
+    # Vsi non-alphanumeric, razen _ - → _
+    base = re.sub(r'[^\w\-]', '_', base)
+    # Več _ skupaj → en _
+    base = re.sub(r'_+', '_', base).strip('_')
+    if not base:
+        base = "dokument"
+    return f"{base}.{ext}"
+
+
 @app.get("/api/documents/{document_id}/export")
 def export_single_document(
     document_id: str,
@@ -309,7 +327,7 @@ def export_single_document(
     db: Session = Depends(get_db)
 ):
     """
-    Izvozi en dokument v izbranem formatu: json | csv | excel
+    Izvozi en dokument v izbranem formatu: json | csv | excel | txt
     Vrne SAMO raw podatke (field_key → value), brez confidence/metadat.
     """
     doc = db.query(Document).filter(Document.id == document_id).first()
@@ -359,7 +377,7 @@ def export_single_document(
         return StreamingResponse(
             buf,
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            headers={"Content-Disposition": f'attachment; filename="{doc.filename}.xlsx"'}
+            headers={"Content-Disposition": f'attachment; filename="{_safe_filename(doc.filename, "xlsx")}"'}
         )
 
     elif format == "txt":
@@ -374,7 +392,7 @@ def export_single_document(
     return StreamingResponse(
         io.BytesIO(content.encode("utf-8")),
         media_type=media_type,
-        headers={"Content-Disposition": f'attachment; filename="{doc.filename}.{ext}"'}
+        headers={"Content-Disposition": f'attachment; filename="{_safe_filename(doc.filename, ext)}"'}
     )
 
 
@@ -1045,12 +1063,11 @@ def export_batch_txt(batch_id: str, db: Session = Depends(get_db)):
         lines.append("")  # prazna vrstica med dokumenti
 
     content = "\n".join(lines)
-    safe_name = "".join(c if c.isalnum() or c in "-_" else "_" for c in batch.name)
 
     return StreamingResponse(
         io.BytesIO(content.encode("utf-8")),
         media_type="text/plain; charset=utf-8",
-        headers={"Content-Disposition": f'attachment; filename="batch_{safe_name}.txt"'}
+        headers={"Content-Disposition": f'attachment; filename="{_safe_filename("batch_" + batch.name, "txt")}"'}
     )
 
 
@@ -1109,8 +1126,7 @@ def export_batch_excel(batch_id: str, db: Session = Depends(get_db)):
     wb.save(buffer)
     buffer.seek(0)
 
-    safe_name = "".join(c if c.isalnum() else "_" for c in batch.name)
-    filename = f"{safe_name}_{batch_id[:8]}.xlsx"
+    filename = _safe_filename(f"{batch.name}_{batch_id[:8]}", "xlsx")
 
     return StreamingResponse(
         buffer,
