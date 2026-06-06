@@ -222,6 +222,9 @@ function ArchivePage({ onOpenDocument }) {
               <div className="export-menu-item" onClick={(e) => handleBulkExport('csv', e)}>
                 📋 CSV
               </div>
+              <div className="export-menu-item" onClick={(e) => handleBulkExport('txt', e)}>
+                📝 TXT
+              </div>
             </div>
           )}
         </div>
@@ -309,6 +312,9 @@ function ArchivePage({ onOpenDocument }) {
                       </div>
                       <div className="export-menu-item" onClick={(e) => handleSingleExport(doc.id, doc.filename, 'csv', e)}>
                         📋 CSV
+                      </div>
+                      <div className="export-menu-item" onClick={(e) => handleSingleExport(doc.id, doc.filename, 'txt', e)}>
+                        📝 TXT
                       </div>
                     </div>
                   )}

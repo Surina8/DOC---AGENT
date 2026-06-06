@@ -310,6 +310,7 @@ def export_single_document(
 ):
     """
     Izvozi en dokument v izbranem formatu: json | csv | excel
+    Vrne SAMO raw podatke (field_key → value), brez confidence/metadat.
     """
     doc = db.query(Document).filter(Document.id == document_id).first()
     if not doc or not doc.extractions:
@@ -317,30 +318,11 @@ def export_single_document(
 
     latest = max(doc.extractions, key=lambda e: e.extraction_date)
 
-    fields_data = {}
-    for f in latest.fields:
-        fields_data[f.field_key] = {
-            "value": f.field_value,
-            "confidence": f.confidence,
-            "user_corrected": f.user_corrected,
-            "original_value": f.original_value,
-        }
-
-    metadata = {
-        "filename": doc.filename,
-        "upload_date": doc.upload_date.isoformat(),
-        "confirmed_at": latest.confirmed_at.isoformat() if latest.confirmed_at else None,
-        "avg_confidence": latest.avg_confidence,
-        "corrections_count": latest.corrections_count or 0,
-        "total_pages": doc.total_pages,
-    }
+    # Samo key → value mapping
+    fields_data = {f.field_key: (f.field_value or "") for f in latest.fields}
 
     if format == "json":
-        content = json.dumps(
-            {"metadata": metadata, "fields": fields_data},
-            ensure_ascii=False,
-            indent=2
-        )
+        content = json.dumps(fields_data, ensure_ascii=False, indent=2)
         media_type = "application/json"
         ext = "json"
 
@@ -348,15 +330,9 @@ def export_single_document(
         import csv as csv_module
         buf = io.StringIO()
         writer = csv_module.writer(buf)
-        writer.writerow(["field_key", "value", "confidence", "user_corrected", "original_value"])
+        writer.writerow(["field_key", "value"])
         for k, v in fields_data.items():
-            writer.writerow([
-                k,
-                v["value"] or "",
-                v["confidence"],
-                "yes" if v["user_corrected"] else "no",
-                v["original_value"] or ""
-            ])
+            writer.writerow([k, v])
         content = buf.getvalue()
         media_type = "text/csv"
         ext = "csv"
@@ -369,27 +345,13 @@ def export_single_document(
         ws = wb.active
         ws.title = "Podatki"
 
-        # Metadata sheet
-        ws_meta = wb.create_sheet("Metapodatki")
-        for i, (k, v) in enumerate(metadata.items(), 1):
-            ws_meta.cell(row=i, column=1, value=k).font = Font(bold=True)
-            ws_meta.cell(row=i, column=2, value=str(v) if v is not None else "")
-
-        # Data sheet
-        headers = ["Polje", "Vrednost", "Zanesljivost", "Popravljeno", "Originalna vrednost"]
-        ws.append(headers)
+        ws.append(["Polje", "Vrednost"])
         for cell in ws[1]:
             cell.font = Font(bold=True, color="FFFFFF")
             cell.fill = PatternFill("solid", fgColor="3B82F6")
 
         for k, v in fields_data.items():
-            ws.append([
-                k,
-                v["value"] or "",
-                round(v["confidence"], 2),
-                "Da" if v["user_corrected"] else "Ne",
-                v["original_value"] or ""
-            ])
+            ws.append([k, v])
 
         buf = io.BytesIO()
         wb.save(buf)
@@ -400,8 +362,14 @@ def export_single_document(
             headers={"Content-Disposition": f'attachment; filename="{doc.filename}.xlsx"'}
         )
 
+    elif format == "txt":
+        lines = [f"{k}: {v}" for k, v in fields_data.items()]
+        content = "\n".join(lines)
+        media_type = "text/plain; charset=utf-8"
+        ext = "txt"
+
     else:
-        return {"error": f"Format '{format}' ni podprt. Uporabi: json, csv, excel"}
+        return {"error": f"Format '{format}' ni podprt. Uporabi: json, csv, excel, txt"}
 
     return StreamingResponse(
         io.BytesIO(content.encode("utf-8")),
@@ -430,19 +398,11 @@ def bulk_export(payload: BulkExportRequest, db: Session = Depends(get_db)):
             continue
         latest = max(doc.extractions, key=lambda e: e.extraction_date)
 
-        fields = {}
-        for f in latest.fields:
-            fields[f.field_key] = {
-                "value": f.field_value,
-                "confidence": f.confidence,
-                "user_corrected": f.user_corrected,
-            }
+        # Samo key → value (brez confidence, user_corrected itd.)
+        fields = {f.field_key: (f.field_value or "") for f in latest.fields}
 
         docs_data.append({
             "filename": doc.filename,
-            "upload_date": doc.upload_date.isoformat(),
-            "confirmed_at": latest.confirmed_at.isoformat() if latest.confirmed_at else None,
-            "avg_confidence": latest.avg_confidence,
             "fields": fields,
         })
 
@@ -464,11 +424,11 @@ def bulk_export(payload: BulkExportRequest, db: Session = Depends(get_db)):
 
         buf = io.StringIO()
         writer = csv_module.writer(buf)
-        writer.writerow(["filename", "confirmed_at", "avg_confidence"] + sorted_keys)
+        writer.writerow(["filename"] + sorted_keys)
         for d in docs_data:
-            row = [d["filename"], d["confirmed_at"], round(d["avg_confidence"] or 0, 2)]
+            row = [d["filename"]]
             for k in sorted_keys:
-                row.append(d["fields"].get(k, {}).get("value", ""))
+                row.append(d["fields"].get(k, ""))
             writer.writerow(row)
         return StreamingResponse(
             io.BytesIO(buf.getvalue().encode("utf-8")),
@@ -489,20 +449,16 @@ def bulk_export(payload: BulkExportRequest, db: Session = Depends(get_db)):
             all_keys.update(d["fields"].keys())
         sorted_keys = sorted(all_keys)
 
-        headers = ["Datoteka", "Potrjen", "Zanesljivost"] + sorted_keys
+        headers = ["Datoteka"] + sorted_keys
         ws.append(headers)
         for cell in ws[1]:
             cell.font = Font(bold=True, color="FFFFFF")
             cell.fill = PatternFill("solid", fgColor="3B82F6")
 
         for d in docs_data:
-            row = [
-                d["filename"],
-                d["confirmed_at"] or "",
-                round(d["avg_confidence"] or 0, 2)
-            ]
+            row = [d["filename"]]
             for k in sorted_keys:
-                row.append(d["fields"].get(k, {}).get("value", ""))
+                row.append(d["fields"].get(k, ""))
             ws.append(row)
 
         # Auto-width
@@ -517,6 +473,20 @@ def bulk_export(payload: BulkExportRequest, db: Session = Depends(get_db)):
             buf,
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             headers={"Content-Disposition": 'attachment; filename="arhiv_export.xlsx"'}
+        )
+
+    elif payload.format == "txt":
+        lines = []
+        for d in docs_data:
+            lines.append(f"=== {d['filename']} ===")
+            for k in sorted(d["fields"].keys()):
+                lines.append(f"{k}: {d['fields'][k]}")
+            lines.append("")
+        content = "\n".join(lines)
+        return StreamingResponse(
+            io.BytesIO(content.encode("utf-8")),
+            media_type="text/plain; charset=utf-8",
+            headers={"Content-Disposition": 'attachment; filename="arhiv_export.txt"'}
         )
 
     else:
@@ -1025,8 +995,8 @@ def delete_batch(batch_id: str, db: Session = Depends(get_db)):
 @app.get("/api/batches/{batch_id}/export")
 def export_batch(batch_id: str, db: Session = Depends(get_db)):
     """
-    Vrne vsa polja iz batch-a v "flat" JSON formatu primernem za Excel.
-    Vsaka vrstica = en dokument, stolpci = polja.
+    Vrne raw podatke vseh dokumentov v batch-u.
+    Samo field_key → value mapping, brez confidence ali metapodatkov.
     """
     batch = db.query(Batch).filter(Batch.id == batch_id).first()
     if not batch:
@@ -1038,13 +1008,9 @@ def export_batch(batch_id: str, db: Session = Depends(get_db)):
             continue
         latest = max(doc.extractions, key=lambda e: e.extraction_date)
 
-        row = {
-            "filename": doc.filename,
-            "avg_confidence": latest.avg_confidence,
-        }
+        row = {"filename": doc.filename}
         for field in latest.fields:
-            row[field.field_key] = field.field_value
-            row[f"{field.field_key}_confidence"] = field.confidence
+            row[field.field_key] = field.field_value or ""
 
         rows.append(row)
 
@@ -1053,6 +1019,39 @@ def export_batch(batch_id: str, db: Session = Depends(get_db)):
         "rows": rows,
     }
 
+
+
+@app.get("/api/batches/{batch_id}/export-txt")
+def export_batch_txt(batch_id: str, db: Session = Depends(get_db)):
+    """
+    Vrne batch rezultate kot raw TXT — samo field: value pari.
+    Brez confidence, korekcij ali metapodatkov.
+    """
+    batch = db.query(Batch).filter(Batch.id == batch_id).first()
+    if not batch:
+        return {"error": "Batch ne obstaja"}
+
+    lines = []
+
+    for doc in batch.documents:
+        if not doc.extractions:
+            continue
+        latest = max(doc.extractions, key=lambda e: e.extraction_date)
+
+        lines.append(f"=== {doc.filename} ===")
+        for field in sorted(latest.fields, key=lambda f: f.field_key):
+            value = field.field_value or ""
+            lines.append(f"{field.field_key}: {value}")
+        lines.append("")  # prazna vrstica med dokumenti
+
+    content = "\n".join(lines)
+    safe_name = "".join(c if c.isalnum() or c in "-_" else "_" for c in batch.name)
+
+    return StreamingResponse(
+        io.BytesIO(content.encode("utf-8")),
+        media_type="text/plain; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="batch_{safe_name}.txt"'}
+    )
 
 
 @app.get("/api/batches/{batch_id}/export-excel")
@@ -1078,8 +1077,8 @@ def export_batch_excel(batch_id: str, db: Session = Depends(get_db)):
                 all_keys.add(field.field_key)
     sorted_keys = sorted(all_keys)
 
-    # 2) Header vrstica
-    headers = ["Datoteka", "Strani", "Avg. zanesljivost"] + sorted_keys
+    # 2) Header vrstica — samo Datoteka + polja, brez metapodatkov
+    headers = ["Datoteka"] + sorted_keys
     ws.append(headers)
 
     # Stil header-ja
@@ -1095,11 +1094,7 @@ def export_batch_excel(batch_id: str, db: Session = Depends(get_db)):
         latest = max(doc.extractions, key=lambda e: e.extraction_date)
         field_map = {f.field_key: (f.field_value or "") for f in latest.fields}
 
-        row = [
-            doc.filename,
-            doc.total_pages or 0,
-            round(latest.avg_confidence, 2) if latest.avg_confidence else 0,
-        ]
+        row = [doc.filename]
         for key in sorted_keys:
             row.append(field_map.get(key, ""))
         ws.append(row)

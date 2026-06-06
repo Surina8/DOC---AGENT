@@ -66,6 +66,10 @@ function BatchResultsPage({ batchId, onBack, onOpenDocument }) {
     window.open(`http://localhost:8000/api/batches/${batchId}/export-excel`, '_blank');
   }
 
+  function downloadTxt() {
+    window.open(`http://localhost:8000/api/batches/${batchId}/export-txt`, '_blank');
+  }
+
   function getConfidenceColor(conf) {
     if (conf === null || conf === undefined) return '#5a6070';
     if (conf >= 0.85) return '#22c55e';
@@ -119,6 +123,9 @@ function BatchResultsPage({ batchId, onBack, onOpenDocument }) {
               ▦ Kartice
             </button>
           </div>
+          <button className="btn-secondary" onClick={downloadTxt}>
+            📋 TXT
+          </button>
           <button className="btn-secondary" onClick={downloadJSON}>
             📥 JSON
           </button>
