@@ -11,6 +11,25 @@ from pgvector.sqlalchemy import Vector
 from database import Base
 
 
+# Uporabniki
+
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    email = Column(String(255), unique=True, nullable=False, index=True)
+    hashed_password = Column(String(255), nullable=False)
+    full_name = Column(String(200), nullable=True)
+    role = Column(String(20), default="user", nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    last_login = Column(DateTime, nullable=True)
+    is_active = Column(Boolean, default=True, nullable=False)
+
+    documents = relationship("Document", back_populates="user")
+    batches = relationship("Batch", back_populates="user")
+    templates = relationship("FieldTemplate", back_populates="user")
+
+
 # ─────────────────────────────────────────────────────────────
 # FIELD TEMPLATES — shranjene predloge polj (Pogodba, Račun, ...)
 # ─────────────────────────────────────────────────────────────
@@ -24,6 +43,7 @@ class FieldTemplate(Base):
     __tablename__ = "field_templates"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True)
     name = Column(String(200), nullable=False)
     description = Column(Text, nullable=True)
     document_type = Column(String(100), nullable=True)
@@ -35,6 +55,7 @@ class FieldTemplate(Base):
     # Za semantično iskanje "kateri template ustreza temu dokumentu"
     embedding = Column(Vector(1536), nullable=True)
 
+    user = relationship("User", back_populates="templates")
     template_fields = relationship(
         "TemplateField",
         back_populates="template",
@@ -74,6 +95,7 @@ class Batch(Base):
     __tablename__ = "batches"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True)
     name = Column(String(200), nullable=False)
     template_id = Column(
         UUID(as_uuid=True),
@@ -86,6 +108,7 @@ class Batch(Base):
     total_documents = Column(Integer, default=0, nullable=False)
     completed_documents = Column(Integer, default=0, nullable=False)
 
+    user = relationship("User", back_populates="batches")
     template = relationship("FieldTemplate", back_populates="batches")
     documents = relationship("Document", back_populates="batch")
 
@@ -99,6 +122,7 @@ class Document(Base):
     __tablename__ = "documents"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True)
     filename = Column(String(255), nullable=False)
     pdf_path = Column(String(500), nullable=False)
     upload_date = Column(DateTime, default=datetime.utcnow, nullable=False)
@@ -126,6 +150,7 @@ class Document(Base):
         nullable=True
     )
 
+    user = relationship("User", back_populates="documents")
     batch = relationship("Batch", back_populates="documents")
     template = relationship("FieldTemplate", back_populates="documents")
     extractions = relationship(
