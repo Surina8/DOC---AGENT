@@ -103,6 +103,41 @@ function App() {
     sessionStorage.removeItem('uploadTemplateId');
   }
 
+  // Batch upload state
+  const [batchFiles, setBatchFiles] = useState([]);
+  const [batchName, setBatchName] = useState(() => {
+    return sessionStorage.getItem('batchName') || '';
+  });
+  const [batchFields, setBatchFields] = useState(() => {
+    const saved = sessionStorage.getItem('batchFields');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [batchTemplateId, setBatchTemplateId] = useState(() => {
+    return sessionStorage.getItem('batchTemplateId') || '';
+  });
+
+  useEffect(() => {
+    sessionStorage.setItem('batchName', batchName);
+  }, [batchName]);
+
+  useEffect(() => {
+    sessionStorage.setItem('batchFields', JSON.stringify(batchFields));
+  }, [batchFields]);
+
+  useEffect(() => {
+    sessionStorage.setItem('batchTemplateId', batchTemplateId);
+  }, [batchTemplateId]);
+
+  function clearBatchState() {
+    setBatchFiles([]);
+    setBatchName('');
+    setBatchFields([]);
+    setBatchTemplateId('');
+    sessionStorage.removeItem('batchName');
+    sessionStorage.removeItem('batchFields');
+    sessionStorage.removeItem('batchTemplateId');
+  }
+
   function toggleSidebar() {
     const newVal = !sidebarCollapsed;
     setSidebarCollapsed(newVal);
@@ -164,6 +199,7 @@ function App() {
 
   function viewBatchResults(batchId) {
     setViewBatchId(batchId);
+    clearBatchState();   // po ustvarjenem batch-u počisti
     setActivePage('batch-results');
   }
 
@@ -269,7 +305,19 @@ function App() {
               setSelectedTemplateId={setUploadTemplateId}
             />
           )}
-          {activePage === 'batch' && <BatchUploadPage onViewResults={viewBatchResults} />}
+          {activePage === 'batch' && (
+            <BatchUploadPage
+              onViewResults={viewBatchResults}
+              files={batchFiles}
+              setFiles={setBatchFiles}
+              batchName={batchName}
+              setBatchName={setBatchName}
+              fields={batchFields}
+              setFields={setBatchFields}
+              selectedTemplateId={batchTemplateId}
+              setSelectedTemplateId={setBatchTemplateId}
+            />
+          )}
           {activePage === 'batch-list' && <BatchListPage onOpenBatch={viewBatchResults} />}
           {activePage === 'batch-results' && (
             <BatchResultsPage

@@ -1,14 +1,18 @@
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 
-function BatchUploadPage({ onViewResults }) {
-  const [files, setFiles] = useState([]);
-  const [batchName, setBatchName] = useState('');
+function BatchUploadPage({
+  onViewResults,
+  files,
+  setFiles,
+  batchName,
+  setBatchName,
+  fields,
+  setFields,
+  selectedTemplateId,
+  setSelectedTemplateId,
+}) {
   const [templates, setTemplates] = useState([]);
-  const [selectedTemplateId, setSelectedTemplateId] = useState('');
-
-  // Polja
-  const [fields, setFields] = useState([]);
   const [suggesting, setSuggesting] = useState(false);
 
   // Upload state
