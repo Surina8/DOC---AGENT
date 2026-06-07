@@ -11,7 +11,11 @@ from prompt_builder import build_suggest_prompt, build_extract_prompt
 from llm_client import call_llm
 from confidence import find_coordinates_and_confidence
 from database import get_db, SessionLocal
-from models import Document, Extraction, Field
+from models import Document, Extraction, Field, User
+from auth import (
+    hash_password, verify_password, create_access_token,
+    get_current_user
+)
 
 from pydantic import BaseModel
 from typing import List, Optional
@@ -49,8 +53,91 @@ def root():
     return {"status": "DocAgent backend teče"}
 
 
+# Avtentikacija
+
+class RegisterRequest(BaseModel):
+    email: str
+    password: str
+    full_name: Optional[str] = None
+
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+@app.post("/api/auth/register")
+def register(payload: RegisterRequest, db: Session = Depends(get_db)):
+    if len(payload.password) < 6:
+        return {"error": "Geslo mora imeti vsaj 6 znakov"}
+
+    existing = db.query(User).filter(User.email == payload.email.lower()).first()
+    if existing:
+        return {"error": "Uporabnik s tem emailom že obstaja"}
+
+    user = User(
+        email=payload.email.lower(),
+        hashed_password=hash_password(payload.password),
+        full_name=payload.full_name,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    token = create_access_token(str(user.id), user.email)
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "user": {
+            "id": str(user.id),
+            "email": user.email,
+            "full_name": user.full_name,
+            "role": user.role,
+        }
+    }
+
+
+@app.post("/api/auth/login")
+def login(payload: LoginRequest, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.email == payload.email.lower()).first()
+    if not user or not verify_password(payload.password, user.hashed_password):
+        return {"error": "Napačen email ali geslo"}
+
+    if not user.is_active:
+        return {"error": "Račun ni aktiven"}
+
+    user.last_login = datetime.utcnow()
+    db.commit()
+
+    token = create_access_token(str(user.id), user.email)
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "user": {
+            "id": str(user.id),
+            "email": user.email,
+            "full_name": user.full_name,
+            "role": user.role,
+        }
+    }
+
+
+@app.get("/api/auth/me")
+def get_me(user: User = Depends(get_current_user)):
+    return {
+        "id": str(user.id),
+        "email": user.email,
+        "full_name": user.full_name,
+        "role": user.role,
+        "created_at": user.created_at.isoformat(),
+    }
+
+
 @app.post("/api/suggest-fields")
-async def suggest_fields(file: UploadFile = File(...)):
+async def suggest_fields(
+    file: UploadFile = File(...),
+    user: User = Depends(get_current_user),
+):
     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
         tmp.write(await file.read())
         tmp_path = tmp.name
@@ -74,6 +161,7 @@ async def extract(
     file: UploadFile = File(...),
     fields: str = Form("[]"),
     template_id: str = Form(""),
+    user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     pdf_filename = f"{file.filename}"
@@ -97,6 +185,7 @@ async def extract(
 
         # 2) Ustvari Document zapis v bazi
         document = Document(
+            user_id=user.id,
             filename=file.filename,
             pdf_path=pdf_path,
             total_pages=total_pages,
@@ -177,12 +266,17 @@ async def extract(
         return {"error": str(e)}
     
 @app.get("/api/documents")
-def list_documents(db: Session = Depends(get_db)):
+def list_documents(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     """
     Vrne seznam vseh dokumentov, sortiran po datumu naloženja (najnovejši prvi).
     Vsak dokument vključuje povzetek zadnje ekstrakcije.
     """
-    docs = db.query(Document).order_by(Document.upload_date.desc()).all()
+    docs = db.query(Document).filter(
+        Document.user_id == user.id
+    ).order_by(Document.upload_date.desc()).all()
 
     result = []
     for doc in docs:
@@ -205,13 +299,20 @@ def list_documents(db: Session = Depends(get_db)):
 
 
 @app.get("/api/documents/{document_id}")
-def get_document(document_id: str, db: Session = Depends(get_db)):
+def get_document(
+    document_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     """
     Vrne podrobnosti enega dokumenta z vsemi polji zadnje ekstrakcije.
     Format je enak kot `/api/extract` response, da lahko frontend
     Review stran uporabi isti UI.
     """
-    doc = db.query(Document).filter(Document.id == document_id).first()
+    doc = db.query(Document).filter(
+        Document.id == document_id,
+        Document.user_id == user.id,
+    ).first()
     if not doc:
         return {"error": "Dokument ne obstaja"}
 
@@ -246,12 +347,19 @@ def get_document(document_id: str, db: Session = Depends(get_db)):
 
 
 @app.delete("/api/documents/{document_id}")
-def delete_document(document_id: str, db: Session = Depends(get_db)):
+def delete_document(
+    document_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     """
     Izbriše dokument in vse povezane podatke (extraction, fields).
     Cascade delete v models.py poskrbi za otroke.
     """
-    doc = db.query(Document).filter(Document.id == document_id).first()
+    doc = db.query(Document).filter(
+        Document.id == document_id,
+        Document.user_id == user.id,
+    ).first()
     if not doc:
         return {"error": "Dokument ne obstaja"}
 
@@ -271,12 +379,17 @@ def delete_document(document_id: str, db: Session = Depends(get_db)):
 
 
 @app.get("/api/archive")
-def list_archive(db: Session = Depends(get_db)):
+def list_archive(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     """
     Vrne vse POTRJENE dokumente (z extraction.confirmed_at != None).
     Razlikuje se od /api/documents, ki vrne vse (vključno z nepotrjenimi).
     """
-    docs = db.query(Document).order_by(Document.upload_date.desc()).all()
+    docs = db.query(Document).filter(
+        Document.user_id == user.id
+    ).order_by(Document.upload_date.desc()).all()
 
     result = []
     for doc in docs:
@@ -324,13 +437,17 @@ def _safe_filename(name: str, ext: str) -> str:
 def export_single_document(
     document_id: str,
     format: str = "json",
-    db: Session = Depends(get_db)
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
     """
     Izvozi en dokument v izbranem formatu: json | csv | excel | txt
     Vrne SAMO raw podatke (field_key → value), brez confidence/metadat.
     """
-    doc = db.query(Document).filter(Document.id == document_id).first()
+    doc = db.query(Document).filter(
+        Document.id == document_id,
+        Document.user_id == user.id,
+    ).first()
     if not doc or not doc.extractions:
         return {"error": "Dokument ne obstaja ali nima ekstrakcij"}
 
@@ -402,7 +519,11 @@ class BulkExportRequest(BaseModel):
 
 
 @app.post("/api/archive/export")
-def bulk_export(payload: BulkExportRequest, db: Session = Depends(get_db)):
+def bulk_export(
+    payload: BulkExportRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     """
     Bulk export izbranih dokumentov v izbranem formatu.
     """
@@ -411,7 +532,10 @@ def bulk_export(payload: BulkExportRequest, db: Session = Depends(get_db)):
 
     docs_data = []
     for doc_id in payload.document_ids:
-        doc = db.query(Document).filter(Document.id == doc_id).first()
+        doc = db.query(Document).filter(
+            Document.id == doc_id,
+            Document.user_id == user.id,
+        ).first()
         if not doc or not doc.extractions:
             continue
         latest = max(doc.extractions, key=lambda e: e.extraction_date)
@@ -515,23 +639,19 @@ def bulk_export(payload: BulkExportRequest, db: Session = Depends(get_db)):
 def confirm_extraction(
     extraction_id: str,
     corrections: dict = Body(...),
-    db: Session = Depends(get_db)
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
     """
     Označi extraction kot 'human-reviewed' in shrani popravke.
-
-    corrections: dict {field_key: new_value, ...}
-      — vsa polja, ki jih uporabnik vidi v Review UI
-
-    Za vsako polje:
-      - če je new_value drugačen od trenutne vrednosti → posodobi + arhiviraj original
-      - če je enako → samo označi kot pregledan (no-op za vrednost)
-
-    Vrne povzetek korekcij za UI/logging.
     """
     extraction = db.query(Extraction).filter(Extraction.id == extraction_id).first()
     if not extraction:
         return {"error": "Extraction ne obstaja"}
+
+    # Preverba lastništva preko dokumenta
+    if extraction.document.user_id != user.id:
+        return {"error": "Nimaš dostopa do tega dokumenta"}
 
     changes = []
     for field in extraction.fields:
@@ -591,10 +711,12 @@ class TemplateCreateRequest(BaseModel):
 @app.post("/api/templates")
 def create_template(
     payload: TemplateCreateRequest,
-    db: Session = Depends(get_db)
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
     """Ustvari nov field template iz uporabnikovih trenutnih polj."""
     template = FieldTemplate(
+        user_id=user.id,
         name=payload.name,
         description=payload.description,
         document_type=payload.document_type,
@@ -622,9 +744,14 @@ def create_template(
 
 
 @app.get("/api/templates")
-def list_templates(db: Session = Depends(get_db)):
+def list_templates(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     """Vrne seznam vseh template-ov."""
-    templates = db.query(FieldTemplate).order_by(
+    templates = db.query(FieldTemplate).filter(
+        FieldTemplate.user_id == user.id
+    ).order_by(
         FieldTemplate.usage_count.desc(),
         FieldTemplate.created_date.desc()
     ).all()
@@ -645,10 +772,15 @@ def list_templates(db: Session = Depends(get_db)):
 
 
 @app.get("/api/templates/{template_id}")
-def get_template(template_id: str, db: Session = Depends(get_db)):
+def get_template(
+    template_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     """Vrne en template z vsemi polji."""
     template = db.query(FieldTemplate).filter(
-        FieldTemplate.id == template_id
+        FieldTemplate.id == template_id,
+        FieldTemplate.user_id == user.id,
     ).first()
 
     if not template:
@@ -677,10 +809,15 @@ def get_template(template_id: str, db: Session = Depends(get_db)):
 
 
 @app.delete("/api/templates/{template_id}")
-def delete_template(template_id: str, db: Session = Depends(get_db)):
+def delete_template(
+    template_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     """Izbriše template. Cascade izbriše tudi vsa template_fields."""
     template = db.query(FieldTemplate).filter(
-        FieldTemplate.id == template_id
+        FieldTemplate.id == template_id,
+        FieldTemplate.user_id == user.id,
     ).first()
 
     if not template:
@@ -695,7 +832,8 @@ def delete_template(template_id: str, db: Session = Depends(get_db)):
 async def find_similar(
     file: UploadFile = File(...),
     limit: int = Form(5),
-    db: Session = Depends(get_db)
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
     """
     Najde top K najbolj podobnih dokumentov za podan PDF.
@@ -726,6 +864,7 @@ async def find_similar(
                 (1 - Document.embedding.cosine_distance(query_embedding)).label("similarity")
             )
             .filter(Document.embedding.is_not(None))
+            .filter(Document.user_id == user.id)
             .order_by(Document.embedding.cosine_distance(query_embedding))
             .limit(limit)
             .all()
@@ -763,7 +902,8 @@ async def create_batch(
     name: str = Form(...),
     fields: str = Form(...),
     template_id: str = Form(""),
-    db: Session = Depends(get_db)
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
     """
     Ustvari nov batch z eksplicitnimi polji.
@@ -783,6 +923,7 @@ async def create_batch(
 
     # 1) Ustvari Batch zapis
     batch = Batch(
+        user_id=user.id,
         name=name,
         template_id=template_id if template_id else None,
         status="processing",
@@ -807,6 +948,7 @@ async def create_batch(
             total_pages = pdf_doc.page_count
 
         document = Document(
+            user_id=user.id,
             filename=file.filename,
             pdf_path=pdf_path,
             total_pages=total_pages,
@@ -915,9 +1057,14 @@ def process_batch_background(batch_id: str, document_ids: list, fields_list: lis
 
 
 @app.get("/api/batches")
-def list_batches(db: Session = Depends(get_db)):
+def list_batches(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     """Seznam vseh batch-ov, sortiran po datumu."""
-    batches = db.query(Batch).order_by(Batch.created_date.desc()).all()
+    batches = db.query(Batch).filter(
+        Batch.user_id == user.id
+    ).order_by(Batch.created_date.desc()).all()
 
     result = []
     for b in batches:
@@ -940,12 +1087,19 @@ def list_batches(db: Session = Depends(get_db)):
 
 
 @app.get("/api/batches/{batch_id}")
-def get_batch(batch_id: str, db: Session = Depends(get_db)):
+def get_batch(
+    batch_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     """
     Vrne batch z vsemi dokumenti in njihovimi rezultati.
     Frontend bo polled ta endpoint za progress in končne rezultate.
     """
-    batch = db.query(Batch).filter(Batch.id == batch_id).first()
+    batch = db.query(Batch).filter(
+        Batch.id == batch_id,
+        Batch.user_id == user.id,
+    ).first()
     if not batch:
         return {"error": "Batch ne obstaja"}
 
@@ -990,9 +1144,16 @@ def get_batch(batch_id: str, db: Session = Depends(get_db)):
 
 
 @app.delete("/api/batches/{batch_id}")
-def delete_batch(batch_id: str, db: Session = Depends(get_db)):
+def delete_batch(
+    batch_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     """Izbriše batch in vse povezane dokumente (cascade)."""
-    batch = db.query(Batch).filter(Batch.id == batch_id).first()
+    batch = db.query(Batch).filter(
+        Batch.id == batch_id,
+        Batch.user_id == user.id,
+    ).first()
     if not batch:
         return {"error": "Batch ne obstaja"}
 
@@ -1011,12 +1172,19 @@ def delete_batch(batch_id: str, db: Session = Depends(get_db)):
 
 
 @app.get("/api/batches/{batch_id}/export")
-def export_batch(batch_id: str, db: Session = Depends(get_db)):
+def export_batch(
+    batch_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     """
     Vrne raw podatke vseh dokumentov v batch-u.
     Samo field_key → value mapping, brez confidence ali metapodatkov.
     """
-    batch = db.query(Batch).filter(Batch.id == batch_id).first()
+    batch = db.query(Batch).filter(
+        Batch.id == batch_id,
+        Batch.user_id == user.id,
+    ).first()
     if not batch:
         return {"error": "Batch ne obstaja"}
 
@@ -1040,12 +1208,19 @@ def export_batch(batch_id: str, db: Session = Depends(get_db)):
 
 
 @app.get("/api/batches/{batch_id}/export-txt")
-def export_batch_txt(batch_id: str, db: Session = Depends(get_db)):
+def export_batch_txt(
+    batch_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     """
     Vrne batch rezultate kot raw TXT — samo field: value pari.
     Brez confidence, korekcij ali metapodatkov.
     """
-    batch = db.query(Batch).filter(Batch.id == batch_id).first()
+    batch = db.query(Batch).filter(
+        Batch.id == batch_id,
+        Batch.user_id == user.id,
+    ).first()
     if not batch:
         return {"error": "Batch ne obstaja"}
 
@@ -1072,12 +1247,19 @@ def export_batch_txt(batch_id: str, db: Session = Depends(get_db)):
 
 
 @app.get("/api/batches/{batch_id}/export-excel")
-def export_batch_excel(batch_id: str, db: Session = Depends(get_db)):
+def export_batch_excel(
+    batch_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     """Vrne batch rezultate kot Excel datoteko."""
     from openpyxl import Workbook
     from openpyxl.styles import Font, PatternFill, Alignment
 
-    batch = db.query(Batch).filter(Batch.id == batch_id).first()
+    batch = db.query(Batch).filter(
+        Batch.id == batch_id,
+        Batch.user_id == user.id,
+    ).first()
     if not batch:
         return {"error": "Batch ne obstaja"}
 
