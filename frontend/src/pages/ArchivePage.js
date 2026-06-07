@@ -147,7 +147,6 @@ function ArchivePage({ onOpenDocument }) {
   if (documents.length === 0) {
     return (
       <div style={{ padding: '60px', textAlign: 'center', color: '#5a6070' }}>
-        <div style={{ fontSize: '32px', marginBottom: '16px' }}>🗂️</div>
         <div style={{ fontSize: '16px', marginBottom: '8px', color: '#9aa0b0' }}>
           Arhiv je prazen
         </div>
@@ -187,14 +186,14 @@ function ArchivePage({ onOpenDocument }) {
               onClick={() => setViewMode('table')}
               title="Tabelni pogled"
             >
-              ☰ Tabela
+              Tabela
             </button>
             <button
               className={`view-toggle-btn ${viewMode === 'grid' ? 'active' : ''}`}
               onClick={() => setViewMode('grid')}
               title="Kartični pogled"
             >
-              ▦ Kartice
+              Kartice
             </button>
           </div>
 
@@ -209,21 +208,21 @@ function ArchivePage({ onOpenDocument }) {
               setOpenExportMenu(openExportMenu === 'bulk' ? null : 'bulk');
             }}
           >
-            ⬇ Izvozi izbrane ({selected.size}) ▾
+            Izvozi izbrane ({selected.size})
           </button>
           {openExportMenu === 'bulk' && (
             <div className="export-menu">
               <div className="export-menu-item" onClick={(e) => handleBulkExport('excel', e)}>
-                📊 Excel (.xlsx)
+                Excel (.xlsx)
               </div>
               <div className="export-menu-item" onClick={(e) => handleBulkExport('json', e)}>
-                📄 JSON
+                JSON
               </div>
               <div className="export-menu-item" onClick={(e) => handleBulkExport('csv', e)}>
-                📋 CSV
+                CSV
               </div>
               <div className="export-menu-item" onClick={(e) => handleBulkExport('txt', e)}>
-                📝 TXT
+                TXT
               </div>
             </div>
           )}
@@ -294,27 +293,27 @@ function ArchivePage({ onOpenDocument }) {
                       setOpenExportMenu(openExportMenu === doc.id ? null : doc.id);
                     }}
                   >
-                    ⬇ ▾
+                    Izvozi
                   </button>
                   <button
                     className="btn-danger btn-sm"
                     onClick={(e) => handleDelete(doc.id, doc.filename, e)}
                   >
-                    🗑
+                    Izbriši
                   </button>
                   {openExportMenu === doc.id && (
                     <div className="export-menu" style={{ right: 0, top: '32px' }}>
                       <div className="export-menu-item" onClick={(e) => handleSingleExport(doc.id, doc.filename, 'excel', e)}>
-                        📊 Excel
+                        Excel
                       </div>
                       <div className="export-menu-item" onClick={(e) => handleSingleExport(doc.id, doc.filename, 'json', e)}>
-                        📄 JSON
+                        JSON
                       </div>
                       <div className="export-menu-item" onClick={(e) => handleSingleExport(doc.id, doc.filename, 'csv', e)}>
-                        📋 CSV
+                        CSV
                       </div>
                       <div className="export-menu-item" onClick={(e) => handleSingleExport(doc.id, doc.filename, 'txt', e)}>
-                        📝 TXT
+                        TXT
                       </div>
                     </div>
                   )}

@@ -231,7 +231,6 @@ function UploadPage({ onComplete }) {
       >
         {file ? (
           <>
-            <div className="upload-icon" style={{ color: '#22c55e' }}>✓</div>
             <div className="upload-title" style={{ color: '#22c55e' }}>{file.name}</div>
             <div className="upload-sub">{(file.size / 1024 / 1024).toFixed(2)} MB</div>
             <div style={{ display: 'flex', gap: '8px' }}>
@@ -243,13 +242,12 @@ function UploadPage({ onComplete }) {
                 onClick={suggestFields}
                 disabled={suggesting}
               >
-                {suggesting ? 'Analiziram dokument...' : '✦ Predlagaj polja'}
+                {suggesting ? 'Analiziram dokument...' : 'Predlagaj polja'}
               </button>
             </div>
           </>
         ) : (
           <>
-            <div className="upload-icon">↑</div>
             <div className="upload-title">Povleci PDF sem ali klikni</div>
             <div className="upload-sub">Podprti formati: PDF — max 20MB</div>
             <label className="btn-primary" style={{ cursor: 'pointer' }}>
@@ -274,7 +272,6 @@ function UploadPage({ onComplete }) {
       {file && (searchingSimilar || similarDocs.length > 0) && (
         <div className="similar-panel">
           <div className="similar-header">
-            <span className="similar-icon">🔍</span>
             <span className="similar-title">
               {searchingSimilar
                 ? 'Iščem podobne dokumente v bazi...'
@@ -299,9 +296,9 @@ function UploadPage({ onComplete }) {
                       </span>
                     </div>
                     <div className="similar-meta">
-                      <span>📅 {formatDate(doc.upload_date)}</span>
+                      <span>{formatDate(doc.upload_date)}</span>
                       {doc.template && (
-                        <span>📋 Uporabljen template: <strong>{doc.template.name}</strong></span>
+                        <span>Uporabljen template: <strong>{doc.template.name}</strong></span>
                       )}
                     </div>
                   </div>
@@ -351,7 +348,7 @@ function UploadPage({ onComplete }) {
                 className="btn-secondary"
                 onClick={() => setShowSaveModal(true)}
               >
-                💾 Shrani kot predlogo
+                Shrani kot predlogo
               </button>
             )}
             <button className="btn-primary" onClick={addField}>+ Dodaj polje</button>

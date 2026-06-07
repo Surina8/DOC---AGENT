@@ -104,12 +104,11 @@ function TemplatesPage() {
   if (templates.length === 0) {
     return (
       <div style={{ padding: '60px', textAlign: 'center', color: '#5a6070' }}>
-        <div style={{ fontSize: '32px', marginBottom: '16px' }}>📋</div>
         <div style={{ fontSize: '16px', marginBottom: '8px', color: '#9aa0b0' }}>
           Še nimaš shranjenih predlog
         </div>
         <div style={{ fontSize: '13px' }}>
-          Pojdi na "Nov dokument", konfiguriraj polja in klikni "💾 Shrani kot predlogo".
+          Pojdi na "Nov dokument", konfiguriraj polja in klikni "Shrani kot predlogo".
         </div>
       </div>
     );
@@ -148,9 +147,9 @@ function TemplatesPage() {
                     <div className="template-description">{t.description}</div>
                   )}
                   <div className="template-meta">
-                    <span>📋 {t.field_count} polj</span>
-                    <span>🔁 Uporabljena {t.usage_count}×</span>
-                    <span>📅 {formatDate(t.created_date)}</span>
+                    <span>{t.field_count} polj</span>
+                    <span>Uporabljena {t.usage_count}×</span>
+                    <span>{formatDate(t.created_date)}</span>
                   </div>
                 </div>
                 <div className="template-card-actions">

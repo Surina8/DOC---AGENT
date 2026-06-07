@@ -48,9 +48,9 @@ function BatchListPage({ onOpenBatch }) {
 
   function getStatusBadge(status) {
     const styles = {
-      processing: { bg: '#1e2d4a', color: '#3b82f6', label: '⏳ Procesiranje' },
-      completed: { bg: '#0a2e1e', color: '#22c55e', label: '✓ Končano' },
-      failed: { bg: '#2e0a0a', color: '#ef4444', label: '✗ Napaka' },
+      processing: { bg: '#1e2d4a', color: '#3b82f6', label: 'Procesiranje' },
+      completed: { bg: '#0a2e1e', color: '#22c55e', label: 'Končano' },
+      failed: { bg: '#2e0a0a', color: '#ef4444', label: 'Napaka' },
     };
     const s = styles[status] || styles.processing;
     return (
@@ -69,7 +69,6 @@ function BatchListPage({ onOpenBatch }) {
   if (batches.length === 0) {
     return (
       <div style={{ padding: '60px', textAlign: 'center', color: '#5a6070' }}>
-        <div style={{ fontSize: '32px', marginBottom: '16px' }}>📦</div>
         <div style={{ fontSize: '16px', marginBottom: '8px', color: '#9aa0b0' }}>
           Še nimaš nobenega batch-a
         </div>

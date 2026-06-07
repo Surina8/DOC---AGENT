@@ -223,9 +223,9 @@ function BatchUploadPage({ onViewResults }) {
               </div>
             </div>
             <div className={`batch-status-badge ${batchStatus.status}`}>
-              {batchStatus.status === 'processing' && '⏳ Procesiranje'}
-              {batchStatus.status === 'completed' && '✓ Končano'}
-              {batchStatus.status === 'failed' && '✗ Napaka'}
+              {batchStatus.status === 'processing' && 'Procesiranje'}
+              {batchStatus.status === 'completed' && 'Končano'}
+              {batchStatus.status === 'failed' && 'Napaka'}
             </div>
           </div>
 
@@ -252,12 +252,12 @@ function BatchUploadPage({ onViewResults }) {
                   <span className="batch-doc-status">
                     {doc.has_extraction ? (
                       <span style={{ color: '#22c55e' }}>
-                        ✓ {doc.avg_confidence !== null
+                        {doc.avg_confidence !== null
                           ? `${Math.round(doc.avg_confidence * 100)}%`
                           : 'OK'}
                       </span>
                     ) : (
-                      <span style={{ color: '#5a6070' }}>⏳ Čaka...</span>
+                      <span style={{ color: '#5a6070' }}>Čaka...</span>
                     )}
                   </span>
                 </div>
@@ -308,7 +308,6 @@ function BatchUploadPage({ onViewResults }) {
       >
         {files.length > 0 ? (
           <>
-            <div className="upload-icon" style={{ color: '#22c55e' }}>📚</div>
             <div className="upload-title" style={{ color: '#22c55e' }}>
               {files.length} datotek pripravljenih
             </div>
@@ -328,7 +327,6 @@ function BatchUploadPage({ onViewResults }) {
           </>
         ) : (
           <>
-            <div className="upload-icon">📚</div>
             <div className="upload-title">Povleci več PDF-jev sem</div>
             <div className="upload-sub">Ali klikni za izbor (lahko izberi več hkrati)</div>
             <label className="btn-primary" style={{ cursor: 'pointer' }}>
@@ -355,7 +353,7 @@ function BatchUploadPage({ onViewResults }) {
           </div>
           {files.map((f, i) => (
             <div key={i} className="batch-file-item">
-              <span className="batch-file-name">📄 {f.name}</span>
+              <span className="batch-file-name">{f.name}</span>
               <span className="batch-file-size">{formatBytes(f.size)}</span>
               <button className="btn-danger btn-sm" onClick={() => removeFile(i)}>
                 ×
@@ -397,7 +395,7 @@ function BatchUploadPage({ onViewResults }) {
                 onClick={suggestFieldsFromFirst}
                 disabled={suggesting}
               >
-                {suggesting ? 'Analiziram...' : '✦ Predlagaj iz prvega PDF-ja'}
+                {suggesting ? 'Analiziram...' : 'Predlagaj iz prvega PDF-ja'}
               </button>
               <button className="btn-primary" onClick={addField}>+ Dodaj polje</button>
             </div>

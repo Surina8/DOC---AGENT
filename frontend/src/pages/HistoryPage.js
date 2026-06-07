@@ -100,7 +100,6 @@ function HistoryPage({ onOpenDocument }) {
   if (documents.length === 0) {
     return (
       <div style={{ padding: '60px', textAlign: 'center', color: '#5a6070' }}>
-        <div style={{ fontSize: '32px', marginBottom: '16px' }}>📄</div>
         <div style={{ fontSize: '16px', marginBottom: '8px', color: '#9aa0b0' }}>
           Še nimaš nobenega procesiranega dokumenta
         </div>

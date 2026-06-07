@@ -668,8 +668,13 @@ input, button, select, textarea {
   padding: 7px 10px;
   color: #e8eaf0;
   font-size: 13px;
-  font-family: 'Courier New', monospace;
+  font-family: 'JetBrains Mono', 'Courier New', monospace;
   width: 100%;
+  resize: none;
+  overflow: hidden;
+  line-height: 1.5;
+  min-height: 32px;
+  box-sizing: border-box;
 }
 
 .result-field-input:focus {

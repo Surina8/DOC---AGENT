@@ -201,7 +201,6 @@ function ReviewPage({ data, onConfirmed, onBack, previousPageLabel }) {
   if (confirmed) {
     return (
       <div style={{ padding: '40px', textAlign: 'center', maxWidth: '600px', margin: '0 auto' }}>
-        <div style={{ fontSize: '32px', marginBottom: '16px' }}>✓</div>
         <div style={{ fontSize: '18px', color: '#22c55e', marginBottom: '8px' }}>
           Podatki potrjeni in shranjeni!
         </div>
@@ -272,7 +271,7 @@ function ReviewPage({ data, onConfirmed, onBack, previousPageLabel }) {
 
       {hasLowConfidence && (
         <div className="warning-box">
-          ⚠ Agent zaznal nizko zanesljivost pri nekaterih poljih — prosim preveri označena polja.
+          Agent zaznal nizko zanesljivost pri nekaterih poljih — prosim preveri označena polja.
         </div>
       )}
 
@@ -308,15 +307,26 @@ function ReviewPage({ data, onConfirmed, onBack, previousPageLabel }) {
                       {getConfidenceLabel(conf)} {Math.round(conf * 100)}%
                     </span>
                   </div>
-                  <input
+                  <textarea
                     className="result-field-input"
                     style={{ borderColor: conf < 0.75 ? '#f59e0b' : '#2a2f3a' }}
                     value={editedValues[key] ?? ''}
                     onClick={(e) => e.stopPropagation()}
-                    onChange={(e) => setEditedValues({
-                      ...editedValues,
-                      [key]: e.target.value
-                    })}
+                    onChange={(e) => {
+                      setEditedValues({
+                        ...editedValues,
+                        [key]: e.target.value
+                      });
+                      e.target.style.height = 'auto';
+                      e.target.style.height = e.target.scrollHeight + 'px';
+                    }}
+                    rows={1}
+                    ref={(el) => {
+                      if (el) {
+                        el.style.height = 'auto';
+                        el.style.height = el.scrollHeight + 'px';
+                      }
+                    }}
                   />
                   <div className="result-conf-bar-wrap">
                     <div className="result-conf-bar">
@@ -326,11 +336,6 @@ function ReviewPage({ data, onConfirmed, onBack, previousPageLabel }) {
                       />
                     </div>
                   </div>
-                  {field.source_text && (
-                    <div className="result-source-text">
-                      Najdeno: "{field.source_text}"
-                    </div>
-                  )}
                 </div>
               );
             })}
@@ -348,10 +353,10 @@ function ReviewPage({ data, onConfirmed, onBack, previousPageLabel }) {
               onClick={handleConfirm}
               disabled={saving}
             >
-              {saving ? 'Shranjujem...' : '✓ Potrdi in shrani'}
+              {saving ? 'Shranjujem...' : 'Potrdi in shrani'}
             </button>
             <button className="btn-secondary" disabled={saving}>
-              ✗ Zavrni
+              Zavrni
             </button>
           </div>
         </div>

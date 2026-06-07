@@ -99,38 +99,37 @@ function BatchResultsPage({ batchId, onBack, onOpenDocument }) {
         <div className="batch-results-info">
           <div className="batch-results-title">{batch.name}</div>
           <div className="batch-results-meta">
-            <span>📋 Template: <strong>{batch.template_name || '—'}</strong></span>
-            <span>📄 {batch.total_documents} dokumentov</span>
-            <span>✓ {batch.completed_documents} obdelanih</span>
+            <span>Predloga: <strong>{batch.template_name || '—'}</strong></span>
+            <span>{batch.total_documents} dokumentov</span>
+            <span>{batch.completed_documents} obdelanih</span>
           </div>
         </div>
 
         <div className="batch-results-actions">
-          {/* View mode toggle */}
           <div className="view-toggle" style={{ marginRight: '8px' }}>
             <button
               className={`view-toggle-btn ${viewMode === 'table' ? 'active' : ''}`}
               onClick={() => setViewMode('table')}
               title="Tabelni pogled"
             >
-              ☰ Tabela
+              Tabela
             </button>
             <button
               className={`view-toggle-btn ${viewMode === 'grid' ? 'active' : ''}`}
               onClick={() => setViewMode('grid')}
               title="Kartični pogled"
             >
-              ▦ Kartice
+              Kartice
             </button>
           </div>
           <button className="btn-secondary" onClick={downloadTxt}>
-            📋 TXT
+            TXT
           </button>
           <button className="btn-secondary" onClick={downloadJSON}>
-            📥 JSON
+            JSON
           </button>
           <button className="btn-primary" onClick={downloadExcel}>
-            📊 Excel
+            Excel
           </button>
         </div>
       </div>
