@@ -8,6 +8,7 @@ import BatchUploadPage from './pages/BatchUploadPage';
 import BatchListPage from './pages/BatchListPage';
 import BatchResultsPage from './pages/BatchResultsPage';
 import ArchivePage from './pages/ArchivePage';
+import DashboardPage from './pages/DashboardPage';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import { useAuth } from './AuthContext';
@@ -393,7 +394,7 @@ function App() {
           {activePage === 'history' && <HistoryPage onOpenDocument={openHistoricalDocument} />}
           {activePage === 'archive' && <ArchivePage onOpenDocument={openHistoricalDocument} />}
           {activePage === 'templates' && <TemplatesPage />}
-          {activePage === 'dashboard' && <p>Dashboard — kmalu</p>}
+          {activePage === 'dashboard' && <DashboardPage onOpenDocument={openHistoricalDocument} />}
         </div>
       </div>
     </div>

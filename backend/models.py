@@ -183,6 +183,9 @@ class Extraction(Base):
     confirmed_at = Column(DateTime, nullable=True)
     corrections_count = Column(Integer, default=0, nullable=False)
 
+    # Procesni čas v ms
+    processing_duration_ms = Column(Integer, nullable=True)
+
     document = relationship("Document", back_populates="extractions")
     fields = relationship(
         "Field",

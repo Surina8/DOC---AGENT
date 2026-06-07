@@ -1,8 +1,9 @@
 from fastapi import FastAPI, UploadFile, File, Form, Depends, Body
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from dotenv import load_dotenv
-from datetime import datetime
+from datetime import datetime, timedelta
 import tempfile, os, json, fitz
 
 from pdf_reader import extract_text
@@ -131,6 +132,187 @@ def get_me(user: User = Depends(get_current_user)):
     }
 
 
+@app.get("/api/dashboard")
+def get_dashboard(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Agregirane statistike za trenutnega userja."""
+    total_docs = db.query(Document).filter(Document.user_id == user.id).count()
+    total_batches = db.query(Batch).filter(Batch.user_id == user.id).count()
+    total_templates = db.query(FieldTemplate).filter(FieldTemplate.user_id == user.id).count()
+
+    # Število potrjenih dokumentov (kjer ima extraction.confirmed_at)
+    confirmed_docs = db.query(Document).join(Extraction).filter(
+        Document.user_id == user.id,
+        Extraction.confirmed_at.isnot(None),
+    ).distinct().count()
+
+    # Avg confidence čez vse extraction-e
+    avg_conf = db.query(func.avg(Extraction.avg_confidence)).join(Document).filter(
+        Document.user_id == user.id,
+        Extraction.avg_confidence.isnot(None),
+    ).scalar() or 0.0
+
+    # Skupaj korekcij
+    total_corrections = db.query(func.sum(Extraction.corrections_count)).join(Document).filter(
+        Document.user_id == user.id,
+    ).scalar() or 0
+
+    # Dokumenti po dnevih (zadnjih 30 dni)
+    thirty_days_ago = datetime.utcnow() - timedelta(days=30)
+    docs_by_day_raw = db.query(
+        func.date(Document.upload_date).label('day'),
+        func.count(Document.id).label('count'),
+    ).filter(
+        Document.user_id == user.id,
+        Document.upload_date >= thirty_days_ago,
+    ).group_by(func.date(Document.upload_date)).all()
+
+    docs_by_day = [
+        {"day": str(row.day), "count": row.count}
+        for row in docs_by_day_raw
+    ]
+
+    # Distribucija confidence
+    confidence_dist = {"high": 0, "medium": 0, "low": 0}
+    all_confs = db.query(Extraction.avg_confidence).join(Document).filter(
+        Document.user_id == user.id,
+        Extraction.avg_confidence.isnot(None),
+    ).all()
+    for (conf,) in all_confs:
+        if conf >= 0.85:
+            confidence_dist["high"] += 1
+        elif conf >= 0.6:
+            confidence_dist["medium"] += 1
+        else:
+            confidence_dist["low"] += 1
+
+    # Top predloge
+    top_templates_raw = db.query(FieldTemplate).filter(
+        FieldTemplate.user_id == user.id,
+    ).order_by(FieldTemplate.usage_count.desc()).limit(5).all()
+    top_templates = [
+        {"id": str(t.id), "name": t.name, "usage_count": t.usage_count}
+        for t in top_templates_raw
+    ]
+
+    # Zadnji dokumenti
+    recent_docs_raw = db.query(Document).filter(
+        Document.user_id == user.id,
+    ).order_by(Document.upload_date.desc()).limit(5).all()
+
+    recent_documents = []
+    for d in recent_docs_raw:
+        latest = max(d.extractions, key=lambda e: e.extraction_date) if d.extractions else None
+        recent_documents.append({
+            "id": str(d.id),
+            "filename": d.filename,
+            "upload_date": d.upload_date.isoformat(),
+            "status": d.status,
+            "avg_confidence": latest.avg_confidence if latest else None,
+        })
+
+    # Avg processing time (samo iz extractions s podatkom)
+    avg_processing_ms = db.query(func.avg(Extraction.processing_duration_ms)).join(Document).filter(
+        Document.user_id == user.id,
+        Extraction.processing_duration_ms.isnot(None),
+    ).scalar() or 0
+
+    # ECE in reliability diagram
+    # Vzamemo le polja iz POTRJENIH ekstrakcij (kjer vemo, ali je uporabnik popravil)
+    confirmed_fields = db.query(Field.confidence, Field.user_corrected).join(
+        Extraction
+    ).join(Document).filter(
+        Document.user_id == user.id,
+        Extraction.confirmed_at.isnot(None),
+    ).all()
+
+    n_bins = 10
+    bin_size = 1.0 / n_bins
+    bins = [{"lower": i * bin_size, "upper": (i + 1) * bin_size,
+             "count": 0, "avg_conf": 0.0, "accuracy": 0.0} for i in range(n_bins)]
+
+    for conf, corrected in confirmed_fields:
+        if conf is None:
+            continue
+        idx = min(int(conf * n_bins), n_bins - 1)
+        b = bins[idx]
+        b["count"] += 1
+        b["avg_conf"] += conf
+        # "Pravilno" = user ni popravil
+        if not corrected:
+            b["accuracy"] += 1
+
+    ece = 0.0
+    total_n = sum(b["count"] for b in bins)
+    for b in bins:
+        if b["count"] > 0:
+            b["avg_conf"] /= b["count"]
+            b["accuracy"] /= b["count"]
+            if total_n > 0:
+                ece += (b["count"] / total_n) * abs(b["avg_conf"] - b["accuracy"])
+
+    # Problematic templates: per-template avg confidence + correction rate
+    template_stats = []
+    templates_with_data = db.query(FieldTemplate).filter(
+        FieldTemplate.user_id == user.id,
+    ).all()
+
+    for t in templates_with_data:
+        # Štejemo le iz potrjenih ekstrakcij (vemo, kaj je popravljeno)
+        tmpl_fields = db.query(Field).join(Extraction).join(Document).filter(
+            Document.template_id == t.id,
+            Document.user_id == user.id,
+            Extraction.confirmed_at.isnot(None),
+        ).all()
+        if not tmpl_fields:
+            continue
+        total_f = len(tmpl_fields)
+        corrected_f = sum(1 for f in tmpl_fields if f.user_corrected)
+        avg_c = sum(f.confidence for f in tmpl_fields) / total_f
+
+        # Top 3 najpogosteje popravljeno polje
+        from collections import Counter
+        corrected_keys = Counter(f.field_key for f in tmpl_fields if f.user_corrected)
+        top_corrected_for_template = [
+            {"field_key": k, "count": c}
+            for k, c in corrected_keys.most_common(3)
+        ]
+
+        template_stats.append({
+            "id": str(t.id),
+            "name": t.name,
+            "total_fields": total_f,
+            "corrected_fields": corrected_f,
+            "correction_rate": corrected_f / total_f,
+            "avg_confidence": avg_c,
+            "top_corrected_fields": top_corrected_for_template,
+        })
+
+    # Sortiraj po correction_rate desc — najbolj problematične najprej
+    template_stats.sort(key=lambda x: x["correction_rate"], reverse=True)
+
+    return {
+        "stats": {
+            "total_documents": total_docs,
+            "confirmed_documents": confirmed_docs,
+            "total_batches": total_batches,
+            "total_templates": total_templates,
+            "avg_confidence": float(avg_conf),
+            "total_corrections": int(total_corrections),
+            "avg_processing_ms": int(avg_processing_ms),
+            "ece": round(ece, 4),
+        },
+        "documents_by_day": docs_by_day,
+        "confidence_distribution": confidence_dist,
+        "reliability_bins": bins,
+        "top_templates": top_templates,
+        "recent_documents": recent_documents,
+        "template_stats": template_stats,
+    }
+
+
 @app.get("/api/pdfs/{document_id}")
 def serve_pdf(
     document_id: str,
@@ -188,6 +370,9 @@ async def extract(
     with open(pdf_path, "wb") as f:
         f.write(content)
 
+    import time
+    start_time = time.time()
+
     try:
         # 1) Pridobi tekst in št. strani
         text = extract_text(pdf_path)
@@ -241,12 +426,15 @@ async def extract(
         ]
         avg_conf = sum(confidences) / len(confidences) if confidences else 0.0
 
+        duration_ms = int((time.time() - start_time) * 1000)
+
         # 6) Ustvari Extraction zapis
         extraction = Extraction(
             document_id=document.id,
             model_used="openai/gpt-4o-mini",
             avg_confidence=avg_conf,
-            raw_llm_response=extraction_data
+            raw_llm_response=extraction_data,
+            processing_duration_ms=duration_ms,
         )
         db.add(extraction)
         db.flush()
@@ -1016,6 +1204,9 @@ def process_batch_background(batch_id: str, document_ids: list, fields_list: lis
                 if not document:
                     continue
 
+                import time as _time
+                doc_start = _time.time()
+
                 # 1) Embedding
                 document.embedding = generate_embedding(document.document_text)
 
@@ -1030,12 +1221,15 @@ def process_batch_background(batch_id: str, document_ids: list, fields_list: lis
                 confidences = [v["confidence"] for v in results.values() if v.get("confidence") is not None]
                 avg_conf = sum(confidences) / len(confidences) if confidences else 0.0
 
+                doc_duration_ms = int((_time.time() - doc_start) * 1000)
+
                 # 4) Shrani Extraction
                 extraction = Extraction(
                     document_id=document.id,
                     model_used="openai/gpt-4o-mini",
                     avg_confidence=avg_conf,
-                    raw_llm_response=extraction_data
+                    raw_llm_response=extraction_data,
+                    processing_duration_ms=doc_duration_ms,
                 )
                 db.add(extraction)
                 db.flush()
