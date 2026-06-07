@@ -8,6 +8,9 @@ import BatchUploadPage from './pages/BatchUploadPage';
 import BatchListPage from './pages/BatchListPage';
 import BatchResultsPage from './pages/BatchResultsPage';
 import ArchivePage from './pages/ArchivePage';
+import LoginPage from './pages/LoginPage';
+import RegisterPage from './pages/RegisterPage';
+import { useAuth } from './AuthContext';
 
 // SVG ikone za sidebar
 const ICONS = {
@@ -69,6 +72,8 @@ const ICONS = {
 };
 
 function App() {
+  const { user, loading, logout } = useAuth();
+  const [authPage, setAuthPage] = useState('login');
   const [activePage, setActivePage] = useState('upload');
   const [extractionResult, setExtractionResult] = useState(null);
   const [viewBatchId, setViewBatchId] = useState(null);
@@ -222,6 +227,31 @@ function App() {
     return labels[page] || 'Nazaj';
   }
 
+  // Loading state pri preverjanju tokena
+  if (loading) {
+    return (
+      <div className="auth-page">
+        <div style={{ color: 'var(--text-muted)' }}>Nalagam...</div>
+      </div>
+    );
+  }
+
+  // Brez userja → login/register
+  if (!user) {
+    return authPage === 'login' ? (
+      <LoginPage onSwitchToRegister={() => setAuthPage('register')} />
+    ) : (
+      <RegisterPage onSwitchToLogin={() => setAuthPage('login')} />
+    );
+  }
+
+  const userInitials = (user.full_name || user.email)
+    .split(' ')
+    .map(p => p[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
+
   return (
     <div className="app">
       <div className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''}`}>
@@ -273,6 +303,32 @@ function App() {
             </React.Fragment>
           ))}
         </nav>
+
+        <div className="user-menu">
+          {!sidebarCollapsed ? (
+            <>
+              <div className="user-info">
+                <div className="user-avatar">{userInitials}</div>
+                <div style={{ overflow: 'hidden' }}>
+                  <div className="user-name">{user.full_name || 'Uporabnik'}</div>
+                  <div className="user-email">{user.email}</div>
+                </div>
+              </div>
+              <button className="user-logout" onClick={logout}>
+                Odjava
+              </button>
+            </>
+          ) : (
+            <div
+              className="user-info"
+              style={{ justifyContent: 'center', cursor: 'pointer' }}
+              onClick={logout}
+              title="Odjava"
+            >
+              <div className="user-avatar">{userInitials}</div>
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="main">
