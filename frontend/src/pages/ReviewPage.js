@@ -40,7 +40,11 @@ function ReviewPage({ data, onConfirmed, onBack, previousPageLabel }) {
     script.onload = () => {
       window.pdfjsLib.GlobalWorkerOptions.workerSrc =
         'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-      window.pdfjsLib.getDocument(data.pdf_url).promise.then(pdf => {
+      const token = localStorage.getItem('token');
+      window.pdfjsLib.getDocument({
+        url: data.pdf_url,
+        httpHeaders: token ? { Authorization: `Bearer ${token}` } : {},
+      }).promise.then(pdf => {
         setPdfDoc(pdf);
       });
     };

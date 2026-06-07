@@ -1,6 +1,5 @@
 from fastapi import FastAPI, UploadFile, File, Form, Depends, Body
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 from dotenv import load_dotenv
 from datetime import datetime
@@ -27,7 +26,7 @@ import threading
 from sqlalchemy.orm import joinedload
 from models import Batch
 
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, FileResponse
 import io
 
 import math
@@ -45,7 +44,6 @@ app.add_middleware(
 
 PDF_DIR = "pdfs"
 os.makedirs(PDF_DIR, exist_ok=True)
-app.mount("/pdfs", StaticFiles(directory=PDF_DIR), name="pdfs")
 
 
 @app.get("/")
@@ -131,6 +129,25 @@ def get_me(user: User = Depends(get_current_user)):
         "role": user.role,
         "created_at": user.created_at.isoformat(),
     }
+
+
+@app.get("/api/pdfs/{document_id}")
+def serve_pdf(
+    document_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """PDF samo za lastnika dokumenta."""
+    from fastapi import HTTPException
+    doc = db.query(Document).filter(
+        Document.id == document_id,
+        Document.user_id == user.id,
+    ).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Dokument ne obstaja")
+    if not os.path.exists(doc.pdf_path):
+        raise HTTPException(status_code=404, detail="PDF datoteka ne obstaja")
+    return FileResponse(doc.pdf_path, media_type="application/pdf")
 
 
 @app.post("/api/suggest-fields")
@@ -254,7 +271,7 @@ async def extract(
         return {
             "document_id": str(document.id),
             "extraction_id": str(extraction.id),
-            "pdf_url": f"http://localhost:8000/pdfs/{pdf_filename}",
+            "pdf_url": f"http://localhost:8000/api/pdfs/{document.id}",
             "results": results
         }
 
@@ -341,7 +358,7 @@ def get_document(
         "status": doc.status,
         "confirmed_at": latest.confirmed_at.isoformat() if latest.confirmed_at else None,
         "corrections_count": latest.corrections_count,
-        "pdf_url": f"http://localhost:8000/pdfs/{doc.filename}",
+        "pdf_url": f"http://localhost:8000/api/pdfs/{doc.id}",
         "results": results,
     }
 
