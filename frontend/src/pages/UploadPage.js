@@ -1,17 +1,22 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 
-function UploadPage({ onComplete }) {
+function UploadPage({
+  onComplete,
+  file,
+  setFile,
+  fields,
+  setFields,
+  selectedTemplateId,
+  setSelectedTemplateId,
+}) {
   const [dragOver, setDragOver] = useState(false);
-  const [file, setFile] = useState(null);
-  const [fields, setFields] = useState([]);
   const [suggesting, setSuggesting] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState(null);
 
   // Templates
   const [templates, setTemplates] = useState([]);
-  const [selectedTemplateId, setSelectedTemplateId] = useState('');
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [templateName, setTemplateName] = useState('');
   const [templateDescription, setTemplateDescription] = useState('');

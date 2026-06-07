@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import './App.css';
 import UploadPage from './pages/UploadPage';
 import ReviewPage from './pages/ReviewPage';
@@ -77,6 +77,32 @@ function App() {
     return localStorage.getItem('sidebarCollapsed') === 'true';
   });
 
+  // Upload state — preživi navigacijo in refresh
+  const [uploadFile, setUploadFile] = useState(null);
+  const [uploadFields, setUploadFields] = useState(() => {
+    const saved = sessionStorage.getItem('uploadFields');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [uploadTemplateId, setUploadTemplateId] = useState(() => {
+    return sessionStorage.getItem('uploadTemplateId') || '';
+  });
+
+  useEffect(() => {
+    sessionStorage.setItem('uploadFields', JSON.stringify(uploadFields));
+  }, [uploadFields]);
+
+  useEffect(() => {
+    sessionStorage.setItem('uploadTemplateId', uploadTemplateId);
+  }, [uploadTemplateId]);
+
+  function clearUploadState() {
+    setUploadFile(null);
+    setUploadFields([]);
+    setUploadTemplateId('');
+    sessionStorage.removeItem('uploadFields');
+    sessionStorage.removeItem('uploadTemplateId');
+  }
+
   function toggleSidebar() {
     const newVal = !sidebarCollapsed;
     setSidebarCollapsed(newVal);
@@ -112,6 +138,7 @@ function App() {
   function goToReview(result) {
     setPreviousPage(activePage);   // zapomni od kod prišel
     setExtractionResult(result);
+    clearUploadState();            // po uspešni ekstrakciji počisti upload state
     setActivePage('review');
   }
 
@@ -231,7 +258,17 @@ function App() {
           </div>
         </div>
         <div className="content">
-          {activePage === 'upload' && <UploadPage onComplete={goToReview} />}
+          {activePage === 'upload' && (
+            <UploadPage
+              onComplete={goToReview}
+              file={uploadFile}
+              setFile={setUploadFile}
+              fields={uploadFields}
+              setFields={setUploadFields}
+              selectedTemplateId={uploadTemplateId}
+              setSelectedTemplateId={setUploadTemplateId}
+            />
+          )}
           {activePage === 'batch' && <BatchUploadPage onViewResults={viewBatchResults} />}
           {activePage === 'batch-list' && <BatchListPage onOpenBatch={viewBatchResults} />}
           {activePage === 'batch-results' && (
