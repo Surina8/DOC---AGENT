@@ -137,7 +137,7 @@ function BatchUploadPage({
       return;
     }
     if (!batchName.trim()) {
-      setError('Vnesi ime batch-a.');
+      setError('Vnesi ime sklopa.');
       return;
     }
     if (fields.length === 0) {
@@ -166,7 +166,7 @@ function BatchUploadPage({
       setActiveBatchId(batchId);
       startPolling(batchId);
     } catch (err) {
-      setError('Napaka pri ustvarjanju batch-a.');
+      setError('Napaka pri ustvarjanju sklopa.');
       setCreating(false);
     }
   }
@@ -207,7 +207,7 @@ function BatchUploadPage({
   }
 
   // ───────────────────────────────────────────────
-  // Render: če je aktivni batch, pokaži progress
+  // Render: če je aktivni sklop, pokaži progress
   // ───────────────────────────────────────────────
   if (activeBatchId && batchStatus) {
     const progress = batchStatus.total_documents > 0
@@ -278,7 +278,7 @@ function BatchUploadPage({
                 Poglej rezultate →
               </button>
               <button className="btn-secondary" onClick={startNewBatch}>
-                Nov batch
+                Nov sklop
               </button>
             </div>
           )}
@@ -294,7 +294,7 @@ function BatchUploadPage({
     <div className="batch-upload-page">
 
       <div className="batch-config">
-        <label className="batch-label">Ime batch-a *</label>
+        <label className="batch-label">Ime sklopa *</label>
         <input
           type="text"
           className="batch-input"
@@ -453,7 +453,7 @@ function BatchUploadPage({
           disabled={files.length === 0 || !batchName.trim() || fields.length === 0 || creating}
           onClick={createBatch}
         >
-          {creating ? 'Ustvarjam batch...' : `Procesiraj ${files.length || ''} dokumentov →`}
+          {creating ? 'Ustvarjam sklop...' : `Procesiraj ${files.length || ''} dokumentov →`}
         </button>
       </div>
 

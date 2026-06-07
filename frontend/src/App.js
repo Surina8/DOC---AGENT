@@ -149,7 +149,7 @@ function App() {
       title: 'Nalaganje',
       items: [
         { page: 'upload', icon: ICONS.upload, label: 'Nov dokument' },
-        { page: 'batch', icon: ICONS.batch, label: 'Batch upload' },
+        { page: 'batch', icon: ICONS.batch, label: 'Sklop dokumentov' },
       ],
     },
     {
@@ -158,7 +158,7 @@ function App() {
         { page: 'review', icon: ICONS.review, label: 'Human Review', showBadge: true },
         { page: 'history', icon: ICONS.history, label: 'Zgodovina' },
         { page: 'archive', icon: ICONS.folder, label: 'Arhiv' },
-        { page: 'batch-list', icon: ICONS.archive, label: 'Batch arhiv', activeMatches: ['batch-list', 'batch-results'] },
+        { page: 'batch-list', icon: ICONS.archive, label: 'Arhiv sklopov', activeMatches: ['batch-list', 'batch-results'] },
       ],
     },
     {
@@ -211,9 +211,9 @@ function App() {
   function getPageLabel(page) {
     const labels = {
       upload: 'Nov dokument',
-      batch: 'Batch upload',
-      'batch-list': 'Batch arhiv',
-      'batch-results': 'Rezultati batch-a',
+      batch: 'Sklop dokumentov',
+      'batch-list': 'Arhiv sklopov',
+      'batch-results': 'Rezultati sklopa',
       history: 'Zgodovina',
       archive: 'Arhiv',
       templates: 'Predloge',
@@ -282,9 +282,9 @@ function App() {
             <span className="breadcrumb-sep">/</span>
             <span className="breadcrumb-item current">
               {activePage === 'upload' && 'Nov dokument'}
-              {activePage === 'batch' && 'Batch upload'}
-              {activePage === 'batch-list' && 'Batch arhiv'}
-              {activePage === 'batch-results' && 'Rezultati batch-a'}
+              {activePage === 'batch' && 'Sklop dokumentov'}
+              {activePage === 'batch-list' && 'Arhiv sklopov'}
+              {activePage === 'batch-results' && 'Rezultati sklopa'}
               {activePage === 'review' && 'Human Review'}
               {activePage === 'history' && 'Zgodovina dokumentov'}
               {activePage === 'archive' && 'Arhiv potrjenih'}

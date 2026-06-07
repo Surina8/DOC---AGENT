@@ -17,7 +17,7 @@ function BatchListPage({ onOpenBatch }) {
       const response = await axios.get('http://localhost:8000/api/batches');
       setBatches(response.data.batches || []);
     } catch (err) {
-      setError('Napaka pri nalaganju batch-ov.');
+      setError('Napaka pri nalaganju sklopov.');
     } finally {
       setLoading(false);
     }
@@ -25,7 +25,7 @@ function BatchListPage({ onOpenBatch }) {
 
   async function handleDelete(id, name, e) {
     e.stopPropagation();
-    if (!window.confirm(`Res želiš izbrisati batch "${name}" in vse dokumente v njem?`)) return;
+    if (!window.confirm(`Res želiš izbrisati sklop "${name}" in vse dokumente v njem?`)) return;
 
     try {
       await axios.delete(`http://localhost:8000/api/batches/${id}`);
@@ -70,10 +70,10 @@ function BatchListPage({ onOpenBatch }) {
     return (
       <div style={{ padding: '60px', textAlign: 'center', color: '#5a6070' }}>
         <div style={{ fontSize: '16px', marginBottom: '8px', color: '#9aa0b0' }}>
-          Še nimaš nobenega batch-a
+          Še nimaš nobenega sklopa
         </div>
         <div style={{ fontSize: '13px' }}>
-          Pojdi na "Batch upload" in ustvari prvega.
+          Pojdi na "Sklop dokumentov" in ustvari prvega.
         </div>
       </div>
     );
@@ -82,7 +82,7 @@ function BatchListPage({ onOpenBatch }) {
   return (
     <div className="batches-list-page">
       <div className="section-title" style={{ marginBottom: '16px' }}>
-        Vsi batch-i ({batches.length})
+        Vsi sklopi ({batches.length})
       </div>
 
       <table className="history-table">

@@ -36,7 +36,7 @@ function BatchResultsPage({ batchId, onBack, onOpenDocument }) {
         setBatch(response.data);
       }
     } catch (err) {
-      setError('Napaka pri nalaganju batch-a.');
+      setError('Napaka pri nalaganju sklopa.');
     } finally {
       setLoading(false);
     }
@@ -136,7 +136,7 @@ function BatchResultsPage({ batchId, onBack, onOpenDocument }) {
 
       {batch.documents.length === 0 ? (
         <div style={{ padding: '40px', textAlign: 'center', color: '#5a6070' }}>
-          Batch nima dokumentov.
+          Sklop nima dokumentov.
         </div>
       ) : viewMode === 'grid' ? (
         <div className="archive-grid">
