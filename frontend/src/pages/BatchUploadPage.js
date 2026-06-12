@@ -453,7 +453,7 @@ function BatchUploadPage({
           disabled={files.length === 0 || !batchName.trim() || fields.length === 0 || creating}
           onClick={createBatch}
         >
-          {creating ? 'Ustvarjam sklop...' : `Procesiraj ${files.length || ''} dokumentov →`}
+          {creating ? 'Ustvarjam sklop...' : 'Procesiraj dokumente'}
         </button>
       </div>
 

@@ -417,13 +417,15 @@ input, button, select, textarea {
 .fields-section {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 16px;
 }
 
 .fields-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 .section-title {
@@ -434,29 +436,32 @@ input, button, select, textarea {
 }
 
 .fields-table {
-  background: #13161b;
-  border: 1px solid #2a2f3a;
-  border-radius: 8px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
   overflow: hidden;
 }
 
 .fields-table-header {
   display: grid;
-  grid-template-columns: 1fr 2fr 90px;
-  padding: 10px 14px;
+  grid-template-columns: 1fr 2fr 100px;
+  gap: 12px;
+  padding: 12px 16px;
   font-size: 11px;
-  color: #5a6070;
+  color: var(--text-dim);
   text-transform: uppercase;
-  letter-spacing: 0.5px;
-  border-bottom: 1px solid #2a2f3a;
+  letter-spacing: 0.06em;
+  font-weight: 600;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-elevated);
 }
 
 .field-row {
   display: grid;
-  grid-template-columns: 1fr 2fr 90px;
-  gap: 8px;
-  padding: 8px 14px;
-  border-bottom: 1px solid #1a1e25;
+  grid-template-columns: 1fr 2fr 100px;
+  gap: 12px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border-subtle);
   align-items: center;
 }
 
@@ -465,14 +470,20 @@ input, button, select, textarea {
 }
 
 .field-row input {
-  background: #1a1e25;
-  border: 1px solid #2a2f3a;
-  border-radius: 5px;
-  padding: 7px 10px;
-  color: #e8eaf0;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 12px;
+  color: var(--text-bright);
   font-size: 12px;
-  font-family: 'Courier New', monospace;
+  font-family: 'JetBrains Mono', 'Courier New', monospace;
   width: 100%;
+  transition: border 0.15s;
+}
+
+.field-row input:focus {
+  outline: none;
+  border-color: var(--accent);
 }
 
 .field-row input:focus {
@@ -484,12 +495,13 @@ input, button, select, textarea {
   display: flex;
   align-items: center;
   gap: 16px;
+  margin-top: 16px;
 }
 
 .model-info {
   font-size: 11px;
-  color: #5a6070;
-  font-family: 'Courier New', monospace;
+  color: var(--text-dim);
+  font-family: 'JetBrains Mono', 'Courier New', monospace;
 }
 
 /* Gumbi */
@@ -549,25 +561,31 @@ input, button, select, textarea {
 }
 
 .btn-run {
-  background: #3b82f6;
-  border: none;
-  border-radius: 6px;
-  padding: 10px 24px;
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  padding: 12px 28px;
   color: #fff;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
   cursor: pointer;
-  font-family: 'Segoe UI', sans-serif;
+  letter-spacing: -0.01em;
+  transition: all 0.15s;
+  box-shadow: 0 1px 3px rgba(59, 130, 246, 0.3);
 }
 
 .btn-run:disabled {
-  background: #1e2d4a;
-  color: #5a6070;
+  background: var(--bg-elevated);
+  border-color: var(--border);
+  color: var(--text-dim);
   cursor: not-allowed;
+  box-shadow: none;
 }
 
 .btn-run:hover:not(:disabled) {
-  background: #2563eb;
+  background: var(--accent-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.35);
 }
 
 /* Review stran */
@@ -1583,7 +1601,7 @@ input, button, select, textarea {
 .section-head {
   display: flex;
   justify-content: space-between;
-  align-items: flex-end;
+  align-items: center;
   margin-bottom: 20px;
   flex-wrap: wrap;
   gap: 12px;
@@ -1632,41 +1650,42 @@ input, button, select, textarea {
 /* ─── Template selector ─── */
 
 .template-selector {
-  background: #13161b;
-  border: 1px solid #2a2f3a;
-  border-radius: 8px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
   padding: 16px;
-  margin-top: 20px;
   display: flex;
   align-items: center;
   gap: 16px;
 }
 
 .template-label {
-  font-size: 13px;
-  color: #9aa0b0;
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: 500;
   white-space: nowrap;
 }
 
 .template-select {
   flex: 1;
-  background: #1a1e25;
-  border: 1px solid #2a2f3a;
-  color: #e8eaf0;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  color: var(--text-bright);
   padding: 10px 12px;
-  border-radius: 6px;
+  border-radius: 8px;
   font-size: 13px;
   font-family: inherit;
+  transition: border 0.15s;
   cursor: pointer;
 }
 
 .template-select:hover {
-  border-color: #3b82f6;
+  border-color: var(--accent);
 }
 
 .template-select:focus {
   outline: none;
-  border-color: #3b82f6;
+  border-color: var(--accent);
 }
 
 /* ─── Modal ─── */
@@ -1964,25 +1983,28 @@ input, button, select, textarea {
 /* ─── Batch upload stran ─── */
 
 .batch-upload-page {
-  max-width: 900px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
 }
 
 .batch-config {
-  background: #13161b;
-  border: 1px solid #2a2f3a;
-  border-radius: 8px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
   padding: 20px;
-  margin-bottom: 20px;
 }
 
 .batch-label {
   display: block;
-  font-size: 12px;
-  color: #9aa0b0;
-  margin-bottom: 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 8px;
   margin-top: 12px;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.06em;
+  font-weight: 600;
 }
 
 .batch-label:first-child {
@@ -1991,25 +2013,25 @@ input, button, select, textarea {
 
 .batch-input {
   width: 100%;
-  background: #1a1e25;
-  border: 1px solid #2a2f3a;
-  color: #e8eaf0;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  color: var(--text-bright);
   padding: 10px 12px;
-  border-radius: 6px;
+  border-radius: 8px;
   font-size: 13px;
   font-family: inherit;
+  transition: border 0.15s;
 }
 
 .batch-input:focus {
   outline: none;
-  border-color: #3b82f6;
+  border-color: var(--accent);
 }
 
 .batch-files-list {
-  background: #13161b;
-  border: 1px solid #2a2f3a;
-  border-radius: 8px;
-  margin-top: 16px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
   overflow: hidden;
 }
 
@@ -2018,12 +2040,12 @@ input, button, select, textarea {
   justify-content: space-between;
   align-items: center;
   padding: 12px 16px;
-  background: #1a1e25;
-  border-bottom: 1px solid #2a2f3a;
-  font-size: 12px;
-  color: #9aa0b0;
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 11px;
+  color: var(--text-muted);
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.06em;
   font-weight: 600;
 }
 
@@ -2032,8 +2054,8 @@ input, button, select, textarea {
   grid-template-columns: 1fr auto auto;
   gap: 16px;
   align-items: center;
-  padding: 10px 16px;
-  border-bottom: 1px solid #1e2228;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .batch-file-item:last-child {
@@ -2042,13 +2064,14 @@ input, button, select, textarea {
 
 .batch-file-name {
   font-family: 'JetBrains Mono', 'Courier New', monospace;
-  font-size: 13px;
-  color: #e8eaf0;
+  font-size: 12px;
+  color: var(--text-bright);
 }
 
 .batch-file-size {
   font-size: 12px;
-  color: #5a6070;
+  color: var(--text-dim);
+  font-family: 'JetBrains Mono', 'Courier New', monospace;
 }
 
 /* ─── Batch progress card ─── */
