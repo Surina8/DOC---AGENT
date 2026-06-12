@@ -447,6 +447,47 @@ def _best_cluster(token_matches):
     return chosen
 
 
+def _instance_words(rect, words):
+    """Besede iz get_text('words'), ki se prekrivajo z danim pravokotnikom."""
+    ov = []
+    for w in words:
+        wx0, wy0, wx1, wy1 = w[0], w[1], w[2], w[3]
+        if wx1 > rect.x0 + 0.5 and wx0 < rect.x1 - 0.5 and \
+           wy1 > rect.y0 + 0.5 and wy0 < rect.y1 - 0.5:
+            ov.append(w)
+    return ov
+
+
+def _filter_wholeword_instances(page, instances, value_str):
+    """
+    Loči zadetke na 'cele besede' in 'podnize večjega tokena'.
+    Če obstaja vsaj en zadetek cele besede, vrne samo te (odvrže lažne
+    podnize, npr. "12" znotraj "121/21"). Če NI nobenega zadetka cele
+    besede, vrne vse nespremenjeno — tako nikoli ne izgubimo highlightov.
+    """
+    import string
+    value_clean = re.sub(r'\s+', '', value_str.lower())
+    if not value_clean:
+        return instances
+    words = page.get_text("words")
+    whole, partial = [], []
+    for inst in instances:
+        ov = _instance_words(inst, words)
+        if not ov:
+            whole.append(inst)
+            continue
+        is_partial = False
+        for w in ov:
+            wnorm = re.sub(r'\s+', '', w[4].lower())
+            if value_clean in wnorm and len(wnorm) > len(value_clean):
+                # vrednost je podniz daljšega tokena → obdrži le, če gre za robno ločilo
+                if wnorm.strip(string.punctuation) != value_clean:
+                    is_partial = True
+                    break
+        (partial if is_partial else whole).append(inst)
+    return whole if whole else instances
+
+
 def _native_pipeline(value, source_text, doc):
     """
     Iskanje vrednosti v tekstovnem PDF-ju.
@@ -461,12 +502,15 @@ def _native_pipeline(value, source_text, doc):
     # 1. Direkten search za vrednost
     for page_num, page in enumerate(doc):
         instances = page.search_for(value_str)
-        if instances:
-            rects = [
-                {"x": r.x0, "y": r.y0, "width": r.width, "height": r.height}
-                for r in instances
-            ]
-            return (page_num, rects, 0.95)
+        if not instances:
+            continue
+        # Odvrži lažne podnize (npr. "12" znotraj "121/21")
+        instances = _filter_wholeword_instances(page, instances, value_str)
+        rects = [
+            {"x": r.x0, "y": r.y0, "width": r.width, "height": r.height}
+            for r in instances
+        ]
+        return (page_num, rects, 0.95)
 
     # 2. Po posameznih besedah
     tokens = _tokenize_value(value_str)
