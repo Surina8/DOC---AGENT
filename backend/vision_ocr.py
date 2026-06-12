@@ -15,7 +15,7 @@ import fitz
 from llm_client import client
 
 
-VISION_MODEL = "google/gemini-2.5-pro" 
+VISION_MODEL = "google/gemini-2.5-flash"
 
 
 def render_page_to_base64(page, dpi: int = 200):
@@ -24,6 +24,35 @@ def render_page_to_base64(page, dpi: int = 200):
     img_bytes = pix.tobytes("png")
     img_b64 = base64.b64encode(img_bytes).decode("utf-8")
     return img_b64, pix.width, pix.height
+
+
+def extract_page_text(image_b64: str, model: str = VISION_MODEL) -> str:
+    """
+    Prebere ves tekst s slike strani kot navaden tekst (brez koordinat).
+    Krajši odgovor kot blok-JSON → hitreje in zanesljiveje (manj praznih strani).
+    Koordinate za highlighting pridejo iz EasyOCR, ne od tu.
+    """
+    prompt = (
+        "Preberi VES tekst s te slike dokumenta in ga vrni kot navaden tekst. "
+        "Ohrani vrstni red branja (od zgoraj navzdol), vse številke, šumnike, "
+        "datume in zneske. Pri tabelah ohrani posamezne vrstice. "
+        "Vrni SAMO prebrani tekst, brez svojih komentarjev ali razlag."
+    )
+    response = client.chat.completions.create(
+        model=model,
+        max_tokens=4000,
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {"type": "image_url",
+                     "image_url": {"url": f"data:image/png;base64,{image_b64}"}},
+                ],
+            }
+        ],
+    )
+    return (response.choices[0].message.content or "").strip()
 
 
 def extract_text_blocks_with_positions(
@@ -190,27 +219,119 @@ def is_scanned_pdf(pdf_path: str, threshold: int = 50) -> bool:
 
 def ocr_pdf_with_vision_with_blocks(pdf_path: str, dpi: int = 200):
     """
-    Enaka funkcionalnost kot ocr_pdf_with_vision, ampak vrne tudi
-    blocks_per_page za poznejše ponovno uporabljanje (npr. cache).
+    Prebere tekst vsake strani prek Vision LLM (čisti tekst, brez koordinat).
+    Vrne (full_text, text_per_page); text_per_page omogoča EasyOCR fallback
+    za strani, kjer Vision vrne prazno.
     """
     doc = fitz.open(pdf_path)
     full_text = ""
-    blocks_per_page = {}
+    text_per_page = {}
 
     for page_num, page in enumerate(doc):
         print(f"  → Vision OCR za stran {page_num + 1}/{len(doc)}...")
         try:
             image_b64, w, h = render_page_to_base64(page, dpi=dpi)
-            blocks = extract_text_blocks_with_positions(image_b64, w, h)
-            blocks_per_page[page_num] = blocks
-
-            page_text = "\n".join(b.get("text", "") for b in blocks)
+            page_text = extract_page_text(image_b64)
+            text_per_page[page_num] = page_text
             full_text += f"\n--- Stran {page_num + 1} ---\n{page_text}\n"
-            print(f"     {len(blocks)} blokov ekstrahiranih")
+            print(f"     {len(page_text)} znakov prebranih")
         except Exception as e:
             print(f"  ! NAPAKA pri strani {page_num + 1}: {e}")
+            text_per_page[page_num] = ""
             full_text += f"\n--- Stran {page_num + 1} (napaka) ---\n"
 
     doc.close()
 
-    return full_text, blocks_per_page
+    return full_text, text_per_page
+
+
+def _ground_call(image_b64, fields, model=VISION_MODEL):
+    """
+    fields: list (key, value). Vrne list {key, box, confidence}.
+    LLM vrne bounding box + lastno oceno zanesljivosti branja (čitljivost).
+    """
+    flist = "\n".join(f'{i+1}. [{k}] "{v}"' for i, (k, v) in enumerate(fields))
+    prompt = (
+        "Na sliki dokumenta poišči vsako od naslednjih vrednosti. Za vsako vrni:\n"
+        "- box: bounding box [ymin, xmin, ymax, xmax], normaliziran na 0-1000 "
+        "(ymin = vrh, xmin = levo)\n"
+        "- confidence: število 0-100, kako zanesljivo prebereš to vrednost glede na "
+        "čitljivost (jasen tisk ali jasen rokopis = visoko; zmazano, nejasno ali "
+        "dvoumno = nizko)\n\n"
+        f"Polja:\n{flist}\n\n"
+        "Če vrednosti na sliki ne najdeš, jo izpusti.\n"
+        'Vrni SAMO JSON: {"items": [{"key": "...", "box": [ymin, xmin, ymax, xmax], '
+        '"confidence": 85}, ...]}'
+    )
+    resp = client.chat.completions.create(
+        model=model,
+        max_tokens=2000,
+        response_format={"type": "json_object"},
+        messages=[{"role": "user", "content": [
+            {"type": "text", "text": prompt},
+            {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{image_b64}"}},
+        ]}],
+    )
+    try:
+        data = json.loads(resp.choices[0].message.content or "{}")
+        return data.get("items", [])
+    except json.JSONDecodeError:
+        return []
+
+
+def ground_low_confidence(pdf_path, results, threshold=0.5, dpi=150):
+    """
+    Tier-2 lociranje: za polja s confidence pod pragom uporabi vision LLM grounding.
+    LLM vrne bounding box + svojo oceno zanesljivosti (čitljivost). Uporabno za
+    rokopis in slabe skene, kjer EasyOCR ne najde vrednosti.
+    Spremeni results in-place (rectangles, page, confidence) ter ga vrne.
+    """
+    if not is_scanned_pdf(pdf_path):
+        return results
+
+    remaining = {
+        k: v.get("value") for k, v in results.items()
+        if (v.get("confidence") or 0) < threshold and v.get("value")
+    }
+    if not remaining:
+        return results
+
+    print(f"  → AI grounding za {len(remaining)} nizko-confidence polj...")
+    doc = fitz.open(pdf_path)
+    try:
+        for page_num in range(len(doc)):
+            if not remaining:
+                break
+            page = doc[page_num]
+            pw, ph = page.rect.width, page.rect.height
+            pix = page.get_pixmap(matrix=fitz.Matrix(dpi / 72, dpi / 72))
+            b64 = base64.b64encode(pix.tobytes("png")).decode()
+            try:
+                items = _ground_call(b64, list(remaining.items()))
+            except Exception as e:
+                print(f"  ! grounding napaka stran {page_num + 1}: {e}")
+                continue
+            for it in items:
+                key = it.get("key")
+                box = it.get("box") or it.get("box_2d")
+                conf = it.get("confidence")
+                if key not in remaining or not box or len(box) != 4:
+                    continue
+                ymin, xmin, ymax, xmax = box
+                rect = {
+                    "x": xmin / 1000 * pw,
+                    "y": ymin / 1000 * ph,
+                    "width": (xmax - xmin) / 1000 * pw,
+                    "height": (ymax - ymin) / 1000 * ph,
+                }
+                results[key]["rectangles"] = [rect]
+                results[key]["page"] = page_num
+                if conf is not None:
+                    results[key]["confidence"] = round(min(max(float(conf), 0), 100) / 100, 2)
+                else:
+                    results[key]["confidence"] = 0.6
+                results[key]["method"] = "ai_grounding"
+                del remaining[key]
+    finally:
+        doc.close()
+    return results

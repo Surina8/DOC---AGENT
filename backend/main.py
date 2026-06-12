@@ -412,6 +412,9 @@ async def extract(
 
         # 4) Najdi koordinate in confidence
         results = find_coordinates_and_confidence(pdf_path, extraction_data)
+        # 4b) AI grounding za nizko-confidence polja (rokopis / slab sken)
+        from vision_ocr import ground_low_confidence
+        results = ground_low_confidence(pdf_path, results)
         # DEBUG: pokaži OCR bloke in iskanja za prvih nekaj polj
         from confidence import debug_print_blocks
         debug_print_blocks(pdf_path)
@@ -1222,6 +1225,9 @@ def process_batch_background(batch_id: str, document_ids: list, fields_list: lis
 
                 # 3) Najdi koordinate + confidence
                 results = find_coordinates_and_confidence(document.pdf_path, extraction_data)
+                # 3b) AI grounding za nizko-confidence polja
+                from vision_ocr import ground_low_confidence
+                results = ground_low_confidence(document.pdf_path, results)
 
                 confidences = [v["confidence"] for v in results.values() if v.get("confidence") is not None]
                 avg_conf = sum(confidences) / len(confidences) if confidences else 0.0

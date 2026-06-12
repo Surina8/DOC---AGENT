@@ -15,6 +15,26 @@ def _file_hash(pdf_path: str) -> str:
     return h.hexdigest()
 
 
+def _merge_text_with_fallback(vision_per_page: dict, easyocr_blocks: dict) -> str:
+    """
+    Sestavi tekst po straneh: Vision tekst kjer je uporaben, sicer EasyOCR
+    tekst (za strani, kjer Vision vrne prazno). Tako noben dokument ne ostane
+    brez teksta zaradi občasnega praznega Vision odgovora.
+    """
+    pages = sorted(set(vision_per_page) | set(easyocr_blocks))
+    parts = []
+    for p in pages:
+        vt = (vision_per_page.get(p) or "").strip()
+        if len(vt) >= 20:
+            parts.append(f"--- Stran {p + 1} ---\n{vt}")
+        else:
+            eo = " ".join(b.get("text", "") for b in easyocr_blocks.get(p, []))
+            tag = "EasyOCR fallback" if eo.strip() else "prazno"
+            print(f"  → Stran {p + 1}: Vision prazen → {tag}")
+            parts.append(f"--- Stran {p + 1} ({tag}) ---\n{eo}")
+    return "\n\n".join(parts)
+
+
 def extract_text(pdf_path: str) -> str:
     """
     - PyMuPDF za digitalne (hitro)
@@ -38,10 +58,9 @@ def extract_text(pdf_path: str) -> str:
             print(f"  → OCR iz cache-a (hash: {file_hash[:8]}...)")
             return cached["text"]
 
-        # Vision LLM: vsebina (cloud)
+        # Vision LLM: vsebina (cloud) — čisti tekst po straneh
         print(f"  → Dokument izgleda skeniran, preklapljam na hibridni OCR...")
-        text, _ = ocr_pdf_with_vision_with_blocks(pdf_path)
-        print(f"  → Vision LLM ekstrahiral {len(text)} znakov")
+        _, vision_text_per_page = ocr_pdf_with_vision_with_blocks(pdf_path)
 
         # EasyOCR: natančne pozicije (lokalno)
         from local_ocr import extract_boxes_only
@@ -50,7 +69,11 @@ def extract_text(pdf_path: str) -> str:
         total_blocks = sum(len(b) for b in easyocr_blocks.values())
         print(f"  → EasyOCR našel {total_blocks} blokov skupaj")
 
-        # Cache: tekst (Vision LLM) + pozicije (EasyOCR)
+        # Fallback: kjer Vision vrne prazno stran, uporabi EasyOCR tekst
+        text = _merge_text_with_fallback(vision_text_per_page, easyocr_blocks)
+        print(f"  → Skupni tekst {len(text)} znakov (z EasyOCR fallback)")
+
+        # Cache: tekst + pozicije (EasyOCR)
         _ocr_cache[file_hash] = {
             "text": text,
             "blocks": easyocr_blocks,
