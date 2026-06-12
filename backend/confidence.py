@@ -1,6 +1,8 @@
 import re
+import unicodedata
 import fitz
 from difflib import SequenceMatcher
+from rapidfuzz import fuzz
 
 
 # ─────────────────────────────────────────────────────────────
@@ -580,6 +582,119 @@ def _native_pipeline(value, source_text, doc):
     return best_result
 
 
+# ─────────────────────────────────────────────────────────────
+# FUZZY-ALIGN LOCATOR (za OCR pot)
+# Poveže pravo vrednost (Vision LLM) z dobro postavljenimi, a šumnimi
+# EasyOCR tokeni: fuzzy substring poravnava nad zveznim tokom znakov.
+# Robusten na napake branja (S↔8) in prelome čez vrstice.
+# ─────────────────────────────────────────────────────────────
+
+# Konzervativne OCR confusion skupine (1:1, kanonično = prvi znak)
+_CONF_MAP = {}
+for _grp in ["o0", "i1l", "s5", "b8", "z2"]:
+    for _ch in _grp:
+        _CONF_MAP[_ch] = _grp[0]
+
+
+def _fold_char(c):
+    """Odstrani diakritiko (š→s, č→c, ž→z), ohrani 1 znak."""
+    base = "".join(ch for ch in unicodedata.normalize("NFKD", c)
+                   if not unicodedata.combining(ch))
+    return base[:1] if base else c
+
+
+def _norm_char(c):
+    """Lowercase + fold + confusion normalizacija (1:1, ohranja offsete)."""
+    c = _fold_char(c).lower()
+    return _CONF_MAP.get(c, c)
+
+
+def _build_norm_stream(blocks):
+    """Bloki → (normaliziran zvezni niz, char→token mapa, urejeni bloki)."""
+    bs = sorted(blocks, key=lambda b: (int(float(b.get("y", 0)) // 18), float(b.get("x", 0))))
+    norm = []
+    c2t = []
+    for idx, b in enumerate(bs):
+        if norm:
+            norm.append(" ")
+            c2t.append(None)
+        for ch in str(b.get("text", "")):
+            norm.append(_norm_char(ch))
+            c2t.append(idx)
+    return "".join(norm), c2t, bs
+
+
+def _locate_fuzzy(value, blocks_per_page, dpi=200, min_score=0.6):
+    """
+    Najde vrednost v OCR blokih s fuzzy substring poravnavo.
+    Vrne (page, rectangles, confidence) ali None.
+    Rectangles so v PDF točkah (skalirano 72/dpi), kot pričakuje frontend.
+    """
+    if value is None or not str(value).strip():
+        return None
+    vnorm = "".join(_norm_char(c) for c in str(value))
+    if len(vnorm.strip()) < 2:
+        return None
+    scale = 72.0 / dpi
+
+    best = None
+    for page, blocks in blocks_per_page.items():
+        try:
+            page = int(page)
+        except (ValueError, TypeError):
+            continue
+        if not blocks:
+            continue
+        norm_str, c2t, bs = _build_norm_stream(blocks)
+        if not norm_str.strip():
+            continue
+        al = fuzz.partial_ratio_alignment(vnorm, norm_str, score_cutoff=0)
+        if al is None:
+            continue
+        if best is None or al.score > best[0]:
+            best = (al.score, page, al.dest_start, al.dest_end, c2t, bs)
+
+    if best is None:
+        return None
+    score, page, ds, de, c2t, bs = best
+    if score / 100.0 < min_score:
+        return None
+
+    # najdeni znakovni razpon → tokeni → sorazmeren izsek bbox-a (na vrstico)
+    touched = []
+    for i in range(ds, min(de, len(c2t))):
+        t = c2t[i]
+        if t is not None and t not in touched:
+            touched.append(t)
+
+    rects = []
+    for idx in touched:
+        poss = [i for i, t in enumerate(c2t) if t == idx]
+        if not poss:
+            continue
+        local = [k for k, i in enumerate(poss) if ds <= i < de]
+        if not local:
+            continue
+        tok_len = len(poss)
+        fs = local[0] / tok_len
+        fe = (local[-1] + 1) / tok_len
+        b = bs[idx]
+        bx = float(b.get("x", 0))
+        by = float(b.get("y", 0))
+        bw = float(b.get("w", 0))
+        bh = float(b.get("h", 0))
+        rects.append({
+            "x": (bx + fs * bw) * scale,
+            "y": by * scale,
+            "width": (fe - fs) * bw * scale,
+            "height": bh * scale,
+        })
+
+    if not rects:
+        return None
+    return page, rects, round(score / 100.0, 2)
+
+
 def find_coordinates_and_confidence(pdf_path, extraction_result):
     """
     Za skenirane dokumente uporabi OCR pipeline,
@@ -617,7 +732,7 @@ def find_coordinates_and_confidence(pdf_path, extraction_result):
             continue
 
         if ocr_blocks:
-            result = _find_in_ocr_blocks(value, source_text, ocr_blocks)
+            result = _locate_fuzzy(value, ocr_blocks)
         else:
             result = _native_pipeline(value, source_text, doc)
 

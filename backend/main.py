@@ -1148,7 +1148,8 @@ async def create_batch(
         with open(pdf_path, "wb") as f:
             f.write(content)
 
-        text = extract_text(pdf_path)
+        # total_pages je hiter (brez OCR); extract_text (OCR) gre v background
+        # thread, da POST vrne takoj in event loop ne blokira ostalih zahtevkov
         with fitz.open(pdf_path) as pdf_doc:
             total_pages = pdf_doc.page_count
 
@@ -1157,7 +1158,7 @@ async def create_batch(
             filename=file.filename,
             pdf_path=pdf_path,
             total_pages=total_pages,
-            document_text=text,
+            document_text="",
             batch_id=batch.id,
             template_id=batch.template_id,
             status="pending"
@@ -1206,6 +1207,10 @@ def process_batch_background(batch_id: str, document_ids: list, fields_list: lis
 
                 import time as _time
                 doc_start = _time.time()
+
+                # 0) OCR / ekstrakcija teksta — premaknjeno iz request handlerja v
+                #    thread, da ne blokira event loopa (OCR je lahko ~5 min)
+                document.document_text = extract_text(document.pdf_path)
 
                 # 1) Embedding
                 document.embedding = generate_embedding(document.document_text)
