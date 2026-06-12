@@ -121,6 +121,17 @@ function App() {
   const [batchTemplateId, setBatchTemplateId] = useState(() => {
     return sessionStorage.getItem('batchTemplateId') || '';
   });
+  const [activeBatchId, setActiveBatchId] = useState(() => {
+    return sessionStorage.getItem('activeBatchId') || null;
+  });
+
+  useEffect(() => {
+    if (activeBatchId) {
+      sessionStorage.setItem('activeBatchId', activeBatchId);
+    } else {
+      sessionStorage.removeItem('activeBatchId');
+    }
+  }, [activeBatchId]);
 
   useEffect(() => {
     sessionStorage.setItem('batchName', batchName);
@@ -373,6 +384,8 @@ function App() {
               setFields={setBatchFields}
               selectedTemplateId={batchTemplateId}
               setSelectedTemplateId={setBatchTemplateId}
+              activeBatchId={activeBatchId}
+              setActiveBatchId={setActiveBatchId}
             />
           )}
           {activePage === 'batch-list' && <BatchListPage onOpenBatch={viewBatchResults} />}

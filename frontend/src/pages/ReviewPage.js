@@ -85,23 +85,51 @@ function ReviewPage({ data, onConfirmed, onBack, previousPageLabel }) {
       const color = h.color;
       const isFocused = highlightedKey === h.key;
 
-      h.rectangles.forEach(rect => {
+      h.rectangles.forEach((rect, idx) => {
         const { x, y, width, height } = rect;
+        const rx = x * scale, ry = y * scale, rw = width * scale, rh = height * scale;
+        const radius = 3;
+
+        // svetel prosojen fill (brez multiply, da ni temno)
         ctx.save();
-        ctx.globalCompositeOperation = 'multiply';
+        ctx.globalAlpha = isFocused ? 0.28 : 0.15;
         ctx.fillStyle = color;
-        ctx.fillRect(x * scale, y * scale, width * scale, height * scale);
+        if (ctx.roundRect) {
+          ctx.beginPath();
+          ctx.roundRect(rx, ry, rw, rh, radius);
+          ctx.fill();
+        } else {
+          ctx.fillRect(rx, ry, rw, rh);
+        }
         ctx.restore();
 
+        // barvni rob
         ctx.save();
         ctx.strokeStyle = color;
-        ctx.lineWidth = isFocused ? 4 : 2;
+        ctx.lineWidth = isFocused ? 2.5 : 1.5;
         if (isFocused) {
           ctx.shadowColor = color;
-          ctx.shadowBlur = 12;
+          ctx.shadowBlur = 10;
         }
-        ctx.strokeRect(x * scale, y * scale, width * scale, height * scale);
+        if (ctx.roundRect) {
+          ctx.beginPath();
+          ctx.roundRect(rx, ry, rw, rh, radius);
+          ctx.stroke();
+        } else {
+          ctx.strokeRect(rx, ry, rw, rh);
+        }
         ctx.restore();
+
+        // ključ polja nad prvim okvirčkom
+        if (idx === 0) {
+          ctx.save();
+          ctx.font = '600 11px Inter, system-ui, sans-serif';
+          ctx.textBaseline = 'alphabetic';
+          const ly = Math.max(ry - 4, 11);
+          ctx.fillStyle = color;
+          ctx.fillText(h.key, rx, ly);
+          ctx.restore();
+        }
       });
     });
   }

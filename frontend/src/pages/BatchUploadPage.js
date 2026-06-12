@@ -11,6 +11,8 @@ function BatchUploadPage({
   setFields,
   selectedTemplateId,
   setSelectedTemplateId,
+  activeBatchId,
+  setActiveBatchId,
 }) {
   const [templates, setTemplates] = useState([]);
   const [suggesting, setSuggesting] = useState(false);
@@ -18,17 +20,28 @@ function BatchUploadPage({
   // Upload state
   const [dragOver, setDragOver] = useState(false);
   const [creating, setCreating] = useState(false);
-  const [activeBatchId, setActiveBatchId] = useState(null);
   const [batchStatus, setBatchStatus] = useState(null);
   const [error, setError] = useState(null);
+
+  // Save-template state
+  const [showSaveModal, setShowSaveModal] = useState(false);
+  const [templateName, setTemplateName] = useState('');
+  const [templateDescription, setTemplateDescription] = useState('');
+  const [templateDocType, setTemplateDocType] = useState('contract');
+  const [savingTemplate, setSavingTemplate] = useState(false);
 
   const pollingRef = useRef(null);
 
   useEffect(() => {
     loadTemplates();
+    // Če je sklop že v teku (npr. po vrnitvi na stran), nadaljuj spremljanje
+    if (activeBatchId) {
+      startPolling(activeBatchId);
+    }
     return () => {
       if (pollingRef.current) clearInterval(pollingRef.current);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function loadTemplates() {
@@ -56,6 +69,38 @@ function BatchUploadPage({
       setError(null);
     } catch (err) {
       setError('Napaka pri nalaganju predloge.');
+    }
+  }
+
+  async function handleSaveTemplate() {
+    if (!templateName.trim()) {
+      alert('Vnesi ime predloge.');
+      return;
+    }
+    if (fields.length === 0) {
+      alert('Predloga mora imeti vsaj eno polje.');
+      return;
+    }
+    setSavingTemplate(true);
+    try {
+      await axios.post('http://localhost:8000/api/templates', {
+        name: templateName.trim(),
+        description: templateDescription.trim() || null,
+        document_type: templateDocType,
+        fields: fields.map(f => ({
+          field_key: f.key,
+          field_description: f.description,
+        })),
+      });
+      setTemplateName('');
+      setTemplateDescription('');
+      setShowSaveModal(false);
+      loadTemplates();
+      alert('Predloga shranjena!');
+    } catch (err) {
+      alert('Napaka pri shranjevanju predloge.');
+    } finally {
+      setSavingTemplate(false);
     }
   }
 
@@ -181,6 +226,13 @@ function BatchUploadPage({
   async function pollBatch(batchId) {
     try {
       const response = await axios.get(`http://localhost:8000/api/batches/${batchId}`);
+      if (response.data.error || !response.data.status) {
+        // sklop ne obstaja več → počisti in pokaži form
+        if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
+        setActiveBatchId(null);
+        setBatchStatus(null);
+        return;
+      }
       setBatchStatus(response.data);
 
       if (response.data.status === 'completed' || response.data.status === 'failed') {
@@ -192,6 +244,11 @@ function BatchUploadPage({
       }
     } catch (err) {
       console.error('Napaka pri polling-u:', err);
+      if (err.response?.status === 404) {
+        if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
+        setActiveBatchId(null);
+        setBatchStatus(null);
+      }
     }
   }
 
@@ -209,6 +266,16 @@ function BatchUploadPage({
   // ───────────────────────────────────────────────
   // Render: če je aktivni sklop, pokaži progress
   // ───────────────────────────────────────────────
+  if (activeBatchId && !batchStatus) {
+    return (
+      <div className="batch-upload-page">
+        <div className="batch-progress-card">
+          <div className="batch-progress-title">Nalagam sklop…</div>
+        </div>
+      </div>
+    );
+  }
+
   if (activeBatchId && batchStatus) {
     const progress = batchStatus.total_documents > 0
       ? (batchStatus.completed_documents / batchStatus.total_documents) * 100
@@ -401,6 +468,13 @@ function BatchUploadPage({
               >
                 {suggesting ? 'Analiziram...' : 'Predlagaj iz prvega PDF-ja'}
               </button>
+              <button
+                className="btn-secondary"
+                onClick={() => setShowSaveModal(true)}
+                disabled={fields.length === 0}
+              >
+                Shrani kot predlogo
+              </button>
               <button className="btn-primary" onClick={addField}>+ Dodaj polje</button>
             </div>
           </div>
@@ -456,6 +530,66 @@ function BatchUploadPage({
           {creating ? 'Ustvarjam sklop...' : 'Procesiraj dokumente'}
         </button>
       </div>
+
+      {/* Save template modal */}
+      {showSaveModal && (
+        <div className="modal-overlay" onClick={() => setShowSaveModal(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-title">Shrani kot predlogo</div>
+            <div className="modal-sub">
+              Shranil boš {fields.length} polj kot ponovno uporabno predlogo.
+            </div>
+
+            <label className="modal-label">Ime predloge *</label>
+            <input
+              type="text"
+              className="modal-input"
+              placeholder="npr. Pogodba o sodelovanju"
+              value={templateName}
+              onChange={(e) => setTemplateName(e.target.value)}
+              autoFocus
+            />
+
+            <label className="modal-label">Opis (neobvezno)</label>
+            <input
+              type="text"
+              className="modal-input"
+              placeholder="Kratek opis kdaj uporabiti to predlogo"
+              value={templateDescription}
+              onChange={(e) => setTemplateDescription(e.target.value)}
+            />
+
+            <label className="modal-label">Tip dokumenta</label>
+            <select
+              className="modal-input"
+              value={templateDocType}
+              onChange={(e) => setTemplateDocType(e.target.value)}
+            >
+              <option value="contract">Pogodba</option>
+              <option value="invoice">Račun</option>
+              <option value="form">Obrazec</option>
+              <option value="other">Drugo</option>
+            </select>
+
+            <div className="modal-actions">
+              <button
+                className="btn-secondary"
+                onClick={() => setShowSaveModal(false)}
+                disabled={savingTemplate}
+              >
+                Prekliči
+              </button>
+              <button
+                className="btn-primary"
+                onClick={handleSaveTemplate}
+                disabled={savingTemplate || !templateName.trim()}
+              >
+                {savingTemplate ? 'Shranjujem...' : 'Shrani'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );
