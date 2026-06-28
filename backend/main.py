@@ -8,7 +8,7 @@ import tempfile, os, json, fitz
 
 from pdf_reader import extract_text
 from prompt_builder import build_suggest_prompt, build_extract_prompt
-from llm_client import call_llm
+from llm_client import call_llm, EXTRACTION_MODEL
 from confidence import find_coordinates_and_confidence
 from database import get_db, SessionLocal
 from models import Document, Extraction, Field, User
@@ -434,7 +434,7 @@ async def extract(
         # 6) Ustvari Extraction zapis
         extraction = Extraction(
             document_id=document.id,
-            model_used="openai/gpt-4o-mini",
+            model_used=EXTRACTION_MODEL,
             avg_confidence=avg_conf,
             raw_llm_response=extraction_data,
             processing_duration_ms=duration_ms,
@@ -904,6 +904,28 @@ def confirm_extraction(
     }
 
 
+@app.post("/api/extractions/{extraction_id}/reject")
+def reject_extraction(
+    extraction_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Označi ekstrakcijo / dokument kot zavrnjen."""
+    extraction = db.query(Extraction).filter(Extraction.id == extraction_id).first()
+    if not extraction:
+        return {"error": "Ekstrakcija ne obstaja"}
+
+    if extraction.document.user_id != user.id:
+        return {"error": "Nimaš dostopa do tega dokumenta"}
+
+    if extraction.document:
+        extraction.document.status = "rejected"
+    db.commit()
+    print(f"ZAVRNJEN Extraction: {extraction_id[:8]}")
+
+    return {"status": "rejected", "extraction_id": str(extraction.id)}
+
+
 class TemplateFieldInput(BaseModel):
     field_key: str
     field_description: str
@@ -1237,7 +1259,7 @@ def process_batch_background(batch_id: str, document_ids: list, fields_list: lis
                 # 4) Shrani Extraction
                 extraction = Extraction(
                     document_id=document.id,
-                    model_used="openai/gpt-4o-mini",
+                    model_used=EXTRACTION_MODEL,
                     avg_confidence=avg_conf,
                     raw_llm_response=extraction_data,
                     processing_duration_ms=doc_duration_ms,
